@@ -1,10 +1,10 @@
-= RISC-V Example Specification Document (Zexmpl)
-Authors: Author 1, Author 2
-:docgroup: RISC-V Task Group
-:description: RISC-V Example Specification Document (Zexmpl)
+= RISC-V Performance Event Sampling Specification
+Authors: RV Performance Event Sampling TG
+:docgroup: RV Performance Event Sampling TG
+:description: RISC-V Performance Event Sampling Specification
 :company: RISC-V.org
-:revdate: 1/2023
-:revnumber: 1.0
+:revdate: 12/17/2024
+:revnumber: 0.1
 :revremark: This document is under development. Expect potential changes. Visit http://riscv.org/spec-state for further details.
 :revinfo:
 :url-riscv: http://riscv.org
@@ -73,8 +73,7 @@ Copyright 2024 by RISC-V International.
 include::contributors.adoc[]
 
 include::intro.adoc[]
-include::chapter2.adoc[]
+include::body.adoc[]
 
 // The index must precede the bibliography
 include::index.adoc[]
-include::bibliography.adoc[]
