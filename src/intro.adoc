@@ -1,43 +1,19 @@
 [[intro]]
 == Introduction
 
-Lorem ipsum indexterm:[Lorem ipsum] dolor sit amet, consectetur adipiscing elit, sed do *eiusmod tempor* incididunt ut labore et dolore magna aliqua. Felis imperdiet proin fermentum leo vel orci porta. Volutpat lacus laoreet non curabitur indexterm:[curabitur] gravida indexterm:[gravida]. Posuere urna nec tincidunt praesent semper feugiat nibh. Elit ``ullamcorper`` dignissim cras tincidunt lobortis. Malesuada fames ac turpis egestas integer eget. Tristique sollicitudin nibh sit amet commodo. Sed felis eget velit aliquet. Sit amet aliquam id diam maecenas ultricies mi. Consectetur purus ut faucibus pulvinar. Lectus urna duis convallis convallis tellus id. Fermentum iaculis eu non diam. Feugiat in fermentum posuere urna nec tincidunt praesent semper feugiat. Urna nec tincidunt praesent semper feugiat nibh.
+RISC-V hardware performance monitoring counters (Zihpm) provide support for counting performance events, and, with Sscofpmf, support basic, interrupt-based performance event sampling. These extensions provide a means for collecting performance event counts across a window of software execution.
 
-.Nonsensical code
-[source, python]
-----
-def banana_apple():
-    x = "banana"
-    y = "apple"
-    for i in range(len(x)):
-        print(x[i], y[i])
-        z = x + y
-    return z
+This specification defines extensions that provide advanced performance event sampling capabilities for RISC-V harts.  They enable precise attribution of performance events, and collection of runtime execution metadata for sampled instructions.  Such capabilities allow developers to much more precisely identify the instructions and functions that incur bottlenecks, and target them for tuning.
 
-result = banana_apple()
-print("Result:", result)
-----
+The *Ssplcofi* ISA extension ('Ss' for supervisor level, 'p' for precise, 'lcofi' for local counter overflow interrupt) guarantees precise delivery of LCOFIs, for select events.  Once a counter programmed to count such an event overflows, it is guaranteed that the LCOFI immediately follows an instruction that incurred the event.  This allows the event to be precisely attributed to the instruction.
 
-Commodo viverra maecenas accumsan lacus. Vulputate odio ut enim blandit indexterm:[blandit] volutpat maecenas volutpat blandit. Urna porttitor rhoncus dolor purus non. Tellus mauris a diam maecenas sed. Vitae auctor eu augue ut lectus. Ridiculus mus mauris vitae ultricies leo integer. Consequat semper viverra nam *libero* justo laoreet sit amet. Pellentesque pulvinar pellentesque habitant morbi tristique senectus et netus et. Ac placerat vestibulum lectus mauris ``ultrices`` eros in cursus turpis. Accumsan in nisl nisi scelerisque eu ultrices vitae. Cras ornare arcu dui vivamus. Vitae congue mauris rhoncus aenean. Consequat mauris nunc congue nisi vitae suscipit tellus. Tempus egestas sed sed risus pretium quam vulputate dignissim. Quis varius quam quisque id diam vel. Mattis nunc sed blandit libero volutpat sed cras ornare arcu. Amet mauris commodo quis imperdiet massa tincidunt nunc.
+The *Sspesa* ISA extension ('Ss' for supervisor level, 'pesa' for precise event sample attribution) allows for precise attribution without requiring precise interrupts.  Instead, it records a sample PC and sample metadata at the time of overflow which, for select events, allows reconstruction of the PC of the instruction that caused the overflow.
 
 [NOTE]
 ====
-The name RISC-V indexterm:[RISC-V] was chosen to represent the fifth major RISC ISA design from UC Berkeley (RISC-I cite:[riscI-isca1981], RISC-II cite:[Katevenis:1983], SOAR cite:[Ungar:1984], and SPUR cite:[spur-jsscc1989] were the first four). We also pun on the use of the Roman numeral "V" to signify "variations" and "vectors", as support for a range of architecture research, including various data-parallel accelerators, is an explicit goal of the ISA design.
+_The Ssplcofi extension should be considered the "more precise" of the two extensions above, as it allows not only precise attribution of the event to a PC, but also allows collection of additional hart state (call-stack, GPRs, etc) associated with that sampled instruction.  With Sspesa, only the attribution PC is available.  Any other hart state may have been altered as a result of interrupt skid, which can allow instructions to retire between that which caused overflow and the actual trap._
+
+_Where Sspesa may be preferred is in high-performance implementations, where implementation of precise interrupts can be very costly._
 ====
 
-=== Sub Section of Introduction
-
-Pellentesque habitant morbi *tristique* senectus et netus et. Aliquam purus sit amet luctus. Odio eu ``feugiat`` pretium nibh ipsum consequat nisl vel. Euismod lacinia at quis risus sed vulputate odio ut. Eu sem integer vitae justo eget. Cursus euismod quis viverra nibh. Tempus egestas sed sed risus. Quis imperdiet massa tincidunt nunc pulvinar. Id venenatis a condimentum vitae sapien pellentesque habitant.
-
-.Nonsensical wavedrom signals
-[wavedrom, svg]
-....
-{
-  "signal": [
-    { "name": "Clock", "wave": "P.......P" },
-    { "name": "Data", "wave": "x.x..xx.x" },
-    { "name": "Control", "wave": "0.1.01..0" },
-    { "name": "Error", "wave": "zZzZzZzZz" }
-  ]
-}
-....
+WARNING: more to come here, further extensions WIP
