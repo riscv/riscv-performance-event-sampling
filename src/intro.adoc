@@ -3,23 +3,23 @@
 
 RISC-V hardware performance monitoring counters (Zihpm) provide support for counting performance events, and, with Sscofpmf, support basic, interrupt-based performance event sampling. These extensions provide a means for collecting performance event counts across a window of software execution.
 
-Sscofpmf, however, makes no guarantees around local counter overflow interrupt (LCOFI) skid.  LCOFI skid is the delay between the counter overflow and the resulting interrupt trap.  As LCOFI skid grows, so grows the imprecision in attributing the event to the running application/library/function/etc.
+Sscofpmf, however, makes no guarantees around local counter overflow interrupt (LCOFI) skid.  LCOFI skid is the delay between the counter overflow and the resulting interrupt trap.  As LCOFI skid grows, so grows the imprecision in attributing the event to the appropriate code.
 
 This specification defines extensions that provide advanced performance event sampling capabilities that enable precise attribution of select performance events to their causal instructions (or instructions that incurred the events), and collection of runtime execution metadata for sampled instructions.  Such capabilities allow developers to much more precisely identify the instructions and functions that incur bottlenecks, and target them for tuning.
 
 The set of performance events that support precise attribution, or other advanced sampling capabilities, is implementation defined.
 
-NOTE: _It is expected that non-speculative performance events associated directly with instruction dispatch, execution, or retirement will support precise attribution.  Speculative events, or events only indirectly associated with instructions (e.g., snoop counts), are unlikely to support precise attribution.  Which events support precise attribution should be indicated in the implementation's specification, performance event JSON file(s), and any other source of performance event information._
+NOTE: _It is expected that non-speculative performance events associated directly with instruction dispatch, execution, or retirement will support precise attribution.  Speculative events and events only indirectly associated with instructions (e.g., snoop counts) are unlikely to support precise attribution.  Which events support precise attribution should be indicated in the implementation's specification, performance event JSON file(s), and any other source of performance event information._
 
-The *Ssplcofi* ISA extension ('Ss' for supervisor level, 'p' for precise, 'lcofi' for local counter overflow interrupt) guarantees no skid in delivery of LCOFIs, for select events.  
+The *Sspesa* ISA extension ('Ss' for supervisor level, 'pesa' for precise event sample attribution) allows for precise attribution without requiring skidless interrupts.  Instead, it records a sample PC and sample metadata at the time of overflow which, for supported events, allows reconstruction of the PC of the causal instruction.
 
-The *Sspesa* ISA extension ('Ss' for supervisor level, 'pesa' for precise event sample attribution) allows for precise attribution without requiring skidless interrupts.  Instead, it records a sample PC and sample metadata at the time of overflow which, for select events, allows reconstruction of the PC of the causal instruction.
+The *Ssplcofi* ISA extension ('Ss' for supervisor level, 'p' for precise, 'lcofi' for local counter overflow interrupt) guarantees no skid in delivery of LCOFIs, for supported events.  Ssplcofi requires support for Sspesa.
 
 [NOTE]
 ====
-_An implementation may opt to support Ssplcofi, Sspesa, or both.  Ssplcofi can be viewed as the "most precise" mechanism, since skid is eliminated.  This ensures that, for supported events, all state collected with the sample is unmodified by instructions following the causal instruction.  However, as will be discussed below, Ssplcofi requires either Sspesa or Ssctr in order to guarantee precise event attribution at the instruction level._
+_Ssplcofi can be viewed as the "most precise" mechanism, since skid is eliminated.  This ensures that, for supported events, all state collected with the sample is unmodified by instructions following the causal instruction._
 
-_Sspesa can be viewed as a less precise mechanism than Ssplcofi, since only the sample PC is unimpacted by LCOFI skid.  Any other state collected (call-stack, GPRs, etc) may have been modified by instructions in the skid window.  It is defined with high performance implementations in mind, where skidless interrupts can be very costly to implement._
+_Sspesa, if implemented without Ssplcofi, can be viewed as a less precise mechanism, since only the sample PC is unimpacted by LCOFI skid.  Any other state collected (call-stack, GPRs, etc) may have been modified by instructions in the skid window.  It is defined with high performance implementations in mind, where skidless interrupts can be very costly to implement._
 ====
 
 WARNING: more to come here, further extensions WIP
