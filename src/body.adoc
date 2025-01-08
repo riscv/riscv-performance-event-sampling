@@ -1,48 +1,67 @@
-[[chapter2]]
-== The Second Chapter
+== Precise Event Sample Attribution ISA Extension (Sspesa)
 
-. The first item.
+The Sspesa extension defines a mechanism by which the hart will, upon Zihpm counter overflow, record a PC and metadata associated with the instruction to which the sampled event should be attributed.
 
-. The second item.
-+
-.. The first sub item.
+=== CSRs
 
-.. The second sub item.
-+
-[CAUTION]
+==== Hardware Performance Monitor Sample PC Register (`shpmspc`)
+
+`shpmspc` is an SXLEN-bit read/write register that holds a sample PC value.  `shpmspc` captures a PC value when a Zihpm counter (`mhpmcounter__i__`) overflows, such that `mhpmevent__i__`.OF transitions from 0 to 1 and `__x__ip`.LCOFIP transitions from 0 to 1 (where _x_ reflects the privilege mode to which LCOFIs are delegated).
+
+NOTE: _The dependence on `__x__ip`.LCOFIP serves to ensure that only the first overflow leading to an LCOFI updates `shpmspc`.  If additional counters overflow before the LCOFI trap, the recorded sample PC is not overwritten.  This ensures that the sample PC is consistent with the point where CTR is frozen, if `__x__ctrctl`.LCOFIFRZ=1. The ID of the counter that caused the sample PC update is recorded in `shpmsdata`.CTRID._
+
+.Sample PC Register for SXLEN=64
+[%unbreakable]
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  64, name: 'Sample PC'},
+], config:{lanes: 1, hspace:1024}}
+....
+
+When counter _i_ is programmed to count a performance event that supports precise attribution, the sample PC value captured may be the PC of the instruction that caused the counter to overflow, or it may be a related value, such that the `shpmsdata` register and other state can be used to discern the PC of the causal instruction.
+
+For events that do not support precise attribution, the instruction whose PC is captured in `shpmspc`, and that which is derived from `shpmspc`, `shpmsdata`, and any other applicable state, is implementation-defined.
+
+NOTE: _For events that do not support precise attribution, implementations are expected to make "best effort" to ensure that the recorded sample PC is the best option for event attribution.  For most cases, recording the PC of an instruction retiring in the cycle of overflow or, if no instructions retire in that cycle, recording the PC of the instruction that is next to retire will suffice._
+
+`shpmspc` can be used by S-mode only when supervisor counter delegation is enabled (`menvcfg`.CDE=1), in which case only overflows of delegated counters update `shpmspc`.  When supervisor counter delegation is disabled (`menvcfg`.CDE=0), attempts to access `shpmspc` from S-mode raise an illegal instruction exception.
+
+Attempts to access `shpmspc` from VS-mode mode raise a virtual instruction exception.
+
+`shpmspc` is a WARL register that must be able to hold all valid virtual addresses. It need not be capable of holding all possible invalid addresses. Prior to writing `shpmspc`, implementations may convert an invalid address into some other invalid address that `shpmspc` is capable of holding.
+
+==== Hardware Performance Monitor Sample Metadata (`shpmsdata`)
+
+`shpmsdata` is an SXLEN-bit read/write WARL register that holds sample metadata.  The CTRID field holds the ID of the counter whose overflow caused the sample metadata to be captured. If more than one counter overflows simultaneously, CTRID holds the ID of the numerically lowest counter.
+
+NOTE: _As an example, for simultaneous overflow of `mhpmcounter5` and `mhpmcounter9`, CTRID would hold 5._
+
+The format of the remaining bits is implementation-defined, serving to provide any metadata necessary to derive the sample PC from `shpmspc` and any other relevant state.  For implementations where `shpmspc` captures the precise sample PC, or where no additional metadata is needed, the remaining `shpmsdata` bits may be hardwired to 0.
+
+.Sample Metadata Register for SXLEN=64
+[%unbreakable]
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  5, name: 'CTRID'},
+    {bits:  59, name: '<i>WARL</i>'},
+], config:{lanes: 1, hspace:1024}}
+....
+
+Access to `shpmsdata` matches that of `shpmspc` above, and `shpmsdata` captures sample metadata for the same cases where `shpmspc` captures a sample PC.
+
+[NOTE]
 ====
-A moment of caution is required for this block of text must be read and apreciated for its importance.
+_In modern, superscalar implementations, the microarchitecture may be optimized such that the full PC of each retired instruction is not maintained throughout the pipeline.  The `shpmsdata` register provides a standard means by which such implementations can provide precise attribution, using a reference PC (`shpmspc`) and custom metadata that can be used by implementation-specific software algorithms to discern the appropriate sample PC._
 ====
 
-. Yet another item.
+WARNING: _Should we say that software should default to using `shpmspc` as-is, if it does not know of any custom algorithm for using `shpmsdata`?  Though that could result in the appearance of support for precise-attribution that in fact is not precise.  Perhaps if `shpmsdata` is not hardcoded to 0 and no custom algorithm is reported then software shouldn't report support for precise attribution?_
 
-. Again, an item.
+== Precise Local Counter Overflow Interrupt ISA Extension (Ssplcofi)
 
-.. A multi-line item.
-+
-This item has multiple lines.
-+
-By multiple lines, this is what we mean.
-+
-Seriously, multiple.
+The Ssplcofi extension guarantees that, for Zihpm counters programmed to count performance events that support precise attribution, any LCOFI that results from overflow of such a counter will have no skid.  The LCOFI trap will immediately follow the instruction that caused the counter to overflow, such that the exception PC (epc) will be that of the instruction immediately following the causal instruction.
 
-=== An example table
+Ssplcofi requries support for Sspesa, which provides a reliable means to discern the sample PC.  Because the causal instruction may be a jump or taken branch, the sample PC cannot be reliably discerned from the epc value.
 
-.Nonsensical table
-[cols="^1,^1,^1,^1,^3,^3",stripes=even,options="header"]
-|===
-4+|Letters _and_ bits {set:cellbgcolor:green} 2+|A much longer area
-|L|R|W|X|Quarter 1|Quarter 2
-|{set:cellbgcolor:!} 0|0|0|0 2+|Rows alternate colors
-|0|0|0|1|Thing 1|Thing 2
-|1|0|0|0|Thing 3|Thing 4
-|1|1|1|1 2+|Span Thing 1 and 2
-|===
-
-=== Sub section
-
-Diam donec adipiscing tristique risus indexterm:[risus]. Nisl rhoncus mattis rhoncus urna. Egestas egestas fringilla phasellus faucibus scelerisque eleifend donec pretium vulputate. Porta non pulvinar neque laoreet suspendisse interdum consectetur libero id. Massa vitae tortor condimentum lacinia quis vel. Donec ac odio tempor orci. Mi sit amet mauris commodo quis imperdiet massa tincidunt. Quis enim lobortis scelerisque fermentum dui. Lacus viverra vitae congue eu. Sed faucibus turpis in eu mi bibendum neque. Sit amet porttitor eget dolor. Aliquet eget sit amet tellus cras adipiscing enim. Id cursus metus aliquam eleifend mi. Vestibulum lorem sed risus ultricies tristique nulla aliquet.
-
-=== Yet another subsection
-
-Quam lacus suspendisse faucibus interdum posuere lorem ipsum. Nulla aliquet enim tortor at auctor urna nunc id cursus. Massa massa ultricies mi quis hendrerit dolor magna. Integer enim neque volutpat ac tincidunt. Dolor magna eget est lorem ipsum dolor. Urna neque viverra justo nec. Neque gravida in fermentum et. Fringilla ut morbi tincidunt augue interdum velit euismod. Dolor sit amet consectetur adipiscing elit. Eu facilisis sed odio morbi. In cursus turpis massa tincidunt dui. Orci indexterm:[orci] phasellus egestas tellus rutrum tellus. Semper eget duis at tellus at urna condimentum. Orci porta non pulvinar neque laoreet suspendisse interdum consectetur.
+WARNING: _Should we make any promises or recommendations for events that do not support precise attribution?  E.g., cycles?_
