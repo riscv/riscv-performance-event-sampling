@@ -3,7 +3,9 @@
 This repo holds the specifications for the RV Performance Event Sampling TG.
 
 Mailing list: https://lists.riscv.org/g/tech-performance-event-sampling
+
 Confluence: https://lf-riscv.atlassian.net/wiki/spaces/PESX/overview
+
 Meeting Notes: https://docs.google.com/document/d/1Cp2GaP-WORds3D7yclJQFFwPXrk3JBFibWbKIQMH30o/edit?usp=sharing
 
 
