@@ -3,7 +3,7 @@ Authors: RV Performance Event Sampling TG
 :docgroup: RV Performance Event Sampling TG
 :description: RISC-V Performance Event Sampling Specification
 :company: RISC-V.org
-:revdate: 12/17/2024
+:revdate: 01/08/2025
 :revnumber: 0.0.1
 :revremark: This document is under development. Expect potential changes. Visit http://riscv.org/spec-state for further details.
 :revinfo:
@@ -41,16 +41,13 @@ endif::[]
 :xrefstyle: short
 
 [preface]
-== List of figures
-list-of::image[hide_empty_section=true, enhanced_rendering=true]
+== Copyright and license information
+This specification is licensed under the Creative Commons
+Attribution 4.0 International License (CC-BY 4.0). The full
+license text is available at
+https://creativecommons.org/licenses/by/4.0/.
 
-[preface]
-== List of tables
-list-of::table[hide_empty_section=true, enhanced_rendering=true]
-
-[preface]
-== List of listings
-list-of::listing[hide_empty_section=true, enhanced_rendering=true]
+Copyright 2024 by RISC-V International.
 
 [WARNING]
 .This document is in the link:http://riscv.org/spec-state[Development state]
@@ -61,19 +58,10 @@ may not conform to the future standard.
 ====
 
 [preface]
-== Copyright and license information
-This specification is licensed under the Creative Commons
-Attribution 4.0 International License (CC-BY 4.0). The full
-license text is available at
-https://creativecommons.org/licenses/by/4.0/.
-
-Copyright 2024 by RISC-V International.
-
-[preface]
 include::contributors.adoc[]
 
 include::intro.adoc[]
 include::body.adoc[]
 
 // The index must precede the bibliography
-include::index.adoc[]
+//include::index.adoc[]

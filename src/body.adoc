@@ -1,3 +1,5 @@
+[[body]]
+
 == Precise Event Sample Attribution ISA Extension (Sspesa)
 
 The Sspesa extension defines a mechanism by which the hart will, upon Zihpm counter overflow, record a PC and metadata associated with the instruction to which the sampled event should be attributed.
@@ -19,15 +21,15 @@ NOTE: _The dependence on `__x__ip`.LCOFIP serves to ensure that only the first o
 ], config:{lanes: 1, hspace:1024}}
 ....
 
-When counter _i_ is programmed to count a performance event that supports precise attribution, the sample PC value captured may be the PC of the instruction that caused the counter to overflow, or it may be a related value, such that the `shpmsdata` register and other state can be used to discern the PC of the causal instruction.
+When counter _i_ is programmed to count a performance event that supports precise attribution, the sample PC value captured will be a PC value related to that of the instruction that caused the counter to overflow, such that the `shpmsdata` register and other state can be used to discern the PC of the causal instruction.  The precise relationship between the captured PC and the PC of the causal instruction is implementation-defined.
 
 For events that do not support precise attribution, the instruction whose PC is captured in `shpmspc`, and that which is derived from `shpmspc`, `shpmsdata`, and any other applicable state, is implementation-defined.
 
-NOTE: _For events that do not support precise attribution, implementations are expected to make "best effort" to ensure that the recorded sample PC is the best option for event attribution.  For most cases, recording the PC of an instruction retiring in the cycle of overflow or, if no instructions retire in that cycle, recording the PC of the instruction that is next to retire will suffice._
+NOTE: _For events that do not support precise attribution, implementations are expected to make "best effort" to ensure that the derived sample PC is the best option for event attribution.  For most cases, the PC of an instruction retiring in the cycle of overflow or, if no instructions retire in that cycle, the PC of the instruction that is next to retire is recommended._
 
 `shpmspc` can be used by S-mode only when supervisor counter delegation is enabled (`menvcfg`.CDE=1), in which case only overflows of delegated counters update `shpmspc`.  When supervisor counter delegation is disabled (`menvcfg`.CDE=0), attempts to access `shpmspc` from S-mode raise an illegal instruction exception.
 
-Attempts to access `shpmspc` from VS-mode mode raise a virtual instruction exception.
+Attempts to access `shpmspc` from VS-mode mode raise a virtual instruction exception when supervisor counter delegation is enabled, and an illegal instruction exception when supervisor counter delegation is disabled.
 
 `shpmspc` is a WARL register that must be able to hold all valid virtual addresses. It need not be capable of holding all possible invalid addresses. Prior to writing `shpmspc`, implementations may convert an invalid address into some other invalid address that `shpmspc` is capable of holding.
 
