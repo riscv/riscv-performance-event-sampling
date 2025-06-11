@@ -3,9 +3,7 @@
 
 RISC-V hardware performance monitoring counters (Zihpm) provide support for counting performance events, and, with Sscofpmf, support basic, interrupt-based performance event sampling. These extensions provide a means for collecting performance event counts across a window of software execution.
 
-Sscofpmf, however, makes no guarantees around local counter overflow interrupt (LCOFI) skid.  LCOFI skid is the delay between the counter overflow and the resulting interrupt trap.  As LCOFI skid grows, so grows the imprecision in attributing the event to the appropriate code.
-
-This specification defines extensions that provide advanced performance event sampling capabilities that enable precise attribution of select performance events to their causal instructions (or instructions that incurred the events), and collection of runtime execution metadata for sampled instructions.  Such capabilities allow developers to much more precisely identify the instructions and functions that incur bottlenecks, and target them for tuning.
+Sscofpmf, however, makes no guarantees around local counter overflow interrupt (LCOFI) skid.  LCOFI skid is the delay between the counter overflow and the resulting interrupt trap.  As LCOFI skid grows, so grows the imprecision in attributing the event to the appropriate code.  This specification defines extensions that provide advanced performance event sampling capabilities that enable precise attribution of select performance events to their causal instructions (or instructions that incurred the events).  Such capabilities allow developers to much more precisely identify the instructions and functions that incur bottlenecks, and target them for tuning.
 
 The set of performance events that support precise attribution, or other advanced sampling capabilities, is implementation defined.
 
@@ -22,4 +20,4 @@ _Ssplcofi can be viewed as the "most precise" mechanism, since skid is eliminate
 _Sspesa, if implemented without Ssplcofi, can be viewed as a less precise mechanism, since only the sample PC is unimpacted by LCOFI skid.  Any other state collected (call-stack, GPRs, etc) may have been modified by instructions in the skid window.  It is defined with high performance implementations in mind, where skidless interrupts can be very costly to implement._
 ====
 
-WARNING: more to come here, further extensions WIP
+The *Smpdis/Sspdis* ISA extensions ('Sm' for machine level, 'pdis' for precise decoded instruction sampling) add a mechanism for sampling instructions rather than events.  S*pdis selects an instruction in the frontend and, as the instruction executes, collects runtime metadata, such as events incurred, latencies, and addresses.  This provides the user visibility into not only which instructions are incurring events most frequently, but also the impact those events have on latency and performance.

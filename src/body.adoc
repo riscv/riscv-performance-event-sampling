@@ -47,7 +47,7 @@ The format of the remaining bits is implementation-defined, serving to provide a
 ....
 {reg: [
     {bits:  5, name: 'CTRID'},
-    {bits:  59, name: '<i>WARL</i>'},
+    {bits:  59, name: 'WARL', type: 1},
 ], config:{lanes: 1, hspace:1024}}
 ....
 
@@ -67,3 +67,636 @@ The Ssplcofi extension guarantees that, for Zihpm counters programmed to count p
 Ssplcofi requries support for Sspesa, which provides a reliable means to discern the sample PC.  Because the causal instruction may be a jump or taken branch, the sample PC cannot be reliably discerned from the epc value.
 
 WARNING: _Should we make any promises or recommendations for events that do not support precise attribution?  E.g., cycles?_
+
+== Precise Decoded Instruction Sampling (Smpdis/Sspdis)
+
+Extensions such as Sspesa and Ssplcofi allow users to perform event-based sampling with precise attribution to an instruction PC.  Smpdis/Sspdis takes a different approach, sampling decoded instructions rather than performance events.  The sampled instructions are chosen in the frontend portion of the pipeline, allowing runtime metadata to be collected by the hardware as the sampled instruction passes through the backend pipeline.  So while event-based sampling with precise attribution allows attributing a single event (the event being sampled) with an instruction, Precise Decoded Instruction Sampling (PDIS) allows collection of multiple events, latencies, and addresses associated with the instruction's execution.  This paints a much more complete picture of the factors that contribute to the instruction's performance, and its impact on overall workload performance.
+
+Because sampled instructions are chosen before they execute, it is not known whether they will incur events of interest.  PDIS therefore includes a rich set of sample filtering options, wherein samples that meet the filter criteria are "qualified" and delivered to software, while others are discarded.  This keeps profiling overhead low, by avoiding the overhead of sample collection for uninteresting instructions.
+
+The machine-level extension, Smpdis, encompasses all newly added CSRs and behavior modifications for a hart across all privilege levels. The corresponding supervisor-level extension, Sspdis, is essentially identical to Sspdis, except that it excludes machine-level CSRs and behaviors not intended to be directly accessible at the supervisor level.
+
+NOTE: _When to use event-based sampling (like Sspesa or Ssplcofi) vs instruction-based sampling (Smpids/Sspdis) is an art rather than a science.  Say more here._
+
+=== CSRs
+
+[[pdisctl]]
+==== Machine PDIS Control Register (`mpdisctl`)
+
+The `mpdisctl` register is a 64-bit WARL register that configures the PDIS mechanism.  For RV32, bits 63:32 of `mpdisctl` can be accessed via the `mpdisctlh` CSR.
+
+WARNING: _do we need RV32 support for PDIS?  Are such processors likely to implement PDIS?  We skipped it for CTR..._
+
+.Machine PDIS Control Register (`mpdisctl`)
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  3, name: 'SEL'},
+    {bits: 29, name: 'HPM[31:3]'},
+    {bits:  1, name: 'MEM'},
+    {bits:  1, name: 'ACC'},
+    {bits:  1, name: 'TS'},
+    {bits:  1, name: 'PA'},
+    {bits:  1, name: 'PTRG'},
+    {bits: 20, name: 'WARL', type: 1},
+    {bits:  3, name: 'Custom'},
+    {bits:  1, name: 'U'},
+    {bits:  1, name: 'S'},
+    {bits:  1, name: 'M'},
+    {bits:  1, name: 'OF'},
+], config:{lanes: 4, hspace:1024}}
+....
+
+[cols="15%,85%",options="header"]
+|====
+| Field | Description
+| SEL | Selects the types of instructions to be counted and sampled.  Encodings are as follows.
+
+0: All instructions decoded.
+
+1: Load instructions decoded.
+
+2: Store instructions decoded.
+
+3: Load and store instructions decoded.
+
+4: Control transfer instructions decoded.
+
+5..7: _Reserved_
+
+| HPM[31:3] | Each HPM__i__ bit enables recording of whether the sampled instruction incurred the event selected in `mhpmevent__i__`.  Recording of events for HPM__i__ requires that counter __i__ is delegated to the same privilege mode as PDIS, that the selected event supports PDIS recording, and that the counter is enabled in the privilege mode in which the sampled instruction executes.
+| MEM | When set, enables storing of sample records (<<samprec>>) to the PDIS Memory Buffer (<<membuff>>).  When cleared, sample records are instead written to `spdisdata__i__` registers (<<dataregs>>).
+| ACC | Accelerate instruction selection after a sample is filtered out or otherwise discarded.  See <<sampsel>>.
+| TS | Enable recording of a timestamp per record.  See <<samprec>>.
+| PA | Enable recording the physical address of sampled explicit memory operations.  See <<samprec>>.
+| PTRG | Enable recording of the prior control transfer target.  See <<samprec>>.
+| Custom | WARL bits designated for custom use.  The value 0 must correspond to standard behavior.  See <<Custom Extensions>>.
+| U  | Enable counting U-mode instructions.
+| S  | Enable counting S-mode instructions.
+| M  | Enable counting M-mode instructions.
+| OF | PDIS counter overflow.
+|====
+
+NOTE: _The set of performance events with PDIS support is implementation-defined and should be discoverable via the implementation's performance event JSON file.  Events with the 'PdisSupported' (TBD) attribute set to true support PDIS._
+
+The M bit is always writable.  The S and U bits are writable if the corresponding privilege mode is implemented.  Otherwise, an implementation may opt to hardwire to 0 any of the other fields described above.  The MEM and ACC fields may be hardwired to 0 or 1.
+
+The SEL field allows software to select the types of instructions to be counted and sampled.  The control transfer instruction type includes all instructions that can effect an explicit control transfer change, including branches, jumps, and trap returns.  It does not include instructions that effect a control transfer change as a result of a trap.  The load instruction type includes all instructions that perform an explicit load operation but not an explicit store, the store instruction type includes all instructions that perform an explicit store operation but not an explicit load, and the load & store instruction type includes only instructions that perform both an explicit load and an explicit store.
+
+The PDIS counter (`spdiscounter`.COUNT) counts decoded instructions based on SEL value, as well as the M, S, and U values in `mpdisctl`, and the S and U values in `vspdisctl`.  See <<pdiscnt>> for more details on PDIS counter behavior.
+
+NOTE: _Filtering samples by instruction type can be done downstream, but that is less efficient as there may be many selected instructions of the wrong type that will be discarded.  By implementing this filtering at selection time, the sample discard rate will be reduced._
+
+When the PDIS counter overflows, a decoded instruction is selected for sampling.  See <<sampsel>> for details on instruction selection.  As the selected instruction passes through the pipeline, sample data is collected by the hardware. For details on the data collected, see <<samprec>>. The PDIS counter is also reloaded to its initial value, counting towards the next sampled instruction.
+
+NOTE: _It is not required that the instruction that caused overflow is selected, but it is recommended that implementations minimize any skid between the overflow instruction and the selected instruction._
+
+When the instruction completes, either by retiring, trapping, or being flushed by an older misspeculation, filtering is applied to the sample data.  See <<pdisfilt>> for details on sample filtering.  If the filter criteria are not met, the sample is discarded, otherwise the sample is qualified.
+
+If the selected instruction is a qualified sample, the sample is recorded.  If MEM=1, the sample record (see <<samprec>>) is written to memory (see <<membuff>>).  If MEM=0, the sample is recorded to CSRs, see <<dataregs>>.
+
+If OF=0 and a sample is qualified, OF transitions to 1 and a local counter overflow interrupt (LCOFI) is pended.  If filtering is not applied to the sample (`spdisevmask`=0 and `spdisfilter`=0), and the sampled instruction neither traps nor is flushed, the LCOFI is guaranteed to be "skidless." Skidless implies that, in the absence of interrupt disabling, the LCOFI is taken before the next instruction in the same privilege mode retires.  This "skidless" LCOFI allows software to collect additional sample state (e.g., general purpose registers, call-stack addresses) before younger instructions can modify it.  For samples that do not meet the criteria that guarantees a skidless LCOFI, it is implementation-defined whether the LCOFI is skidless.
+
+WARNING: _We could support selecting only control flow instructions per transfer type, at the expense of 10 more `mdpisctl` bits (one per type, since we'd need to be able to select combinations of types).  As defined, samples can be filtered by transfer type, but instruction selection does not distinguish between types of control transfers, so there are more records discarded._
+
+==== Machine Count Inhibit Register (`mcountinhibit`)
+
+Bit 1 in `mcountinhibit` controls whether the PDIS counter, `spdiscounter`.COUNT, increments.  When `mcountinhibit`[1]=1, the PDIS counter does not increment.
+
+WARNING: _I'd like to have a way to set `mcountinhibit`[1] on any PDIS LCOFI, or maybe just any LCOFI.  But this probably should be a general mechanism for inhibiting selected counters on LCOFI, and Linux doesn't support any of the existing freeze mechanisms.  This means PDIS will count LCOFI handler instructions, at least until the handler inhibits counters.  But that's the same for all other counters as well.  We could add a (fast-track?) freeze-on-LCOFI extension if we think this is a problem._
+
+==== Supervisor PDIS Control Register (`spdisctl`)
+
+The `spdisctl` register provides supervisor mode access to a subset of `mpdisctl`.
+
+Bit 62 in `spdisctl` is read-only 0. As a result, the M field in `mpdisctl` is not accessible through `spdisctl`. All other `mpdisctl` fields are accessible through `spdisctl`.
+
+For RV32, bits 63:32 of `spdisctl` can be accessed via the `spdisctlh` CSR.
+
+[[pdiscnt]]
+==== Supervisor PDIS Counter Register (`spdiscounter`)
+
+The `spdiscounter` register is a 64-bit WARL register that holds the PDIS counter, as well as the initial counter value used for hardware reload.  For RV32, bits 63:32 of `spdiscounter` can be accessed via the `spdiscounterh` CSR.
+
+.Supervisor PDIS Counter Register (`spdiscounter`)
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  32, name: 'COUNT'},
+    {bits:  32, name: 'INITVAL'},
+], config:{lanes: 1, hspace:1024}}
+....
+
+[cols="15%,85%",options="header"]
+|====
+| Field | Description
+| COUNT | PDIS counter value.
+| INITVAL | Optional PDIS counter initial value.
+|====
+
+The PDIS counter value, `spdiscounter`.COUNT, is incremented for each decoded instruction that matches the instruction type selected in `mpdisctl`.SEL, while in a privilege mode enabled in `mpdisctl`/`vspdisctl`.  Counting is inhibited when `mcountinhibit`[1]=1.
+
+NOTE: _The PDIS counter is limited to 32 bits since, unlike Zihpm counters, it is used only for sampling, rather than for counting.  When Zihpm counters are used in counting mode they count all events for an application, which can run for minutes or more.  Sampling, on the other hand, requires counters only to count through the sample period, which is typically less than 10ms.  Shorter sample periods (higher sampling rates) are preferred for more accurate and detailed profiles, but minimizing sampling overhead can cause longer periods to be chosen.  With a 32-bit counter, even a 10-wide core running at 6 GHz could accommodate a sample period as long as 71ms._
+
+If the INITVAL field is supported then hardware writes the COUNT field with the value held in the INITVAL field when the PDIS counter overflows, such that a hardware update causes `spdiscounter`.COUNT[31] to transition from 1 to 0.  If the INITVAL field is not supported, `spdiscounter`[63:32] is read-only 0.
+
+NOTE: _If INITVAL is not supported, software must configure PDIS to raise an LCOFI for each record, so that the LCOFI handler can reload the counter.  Further, `mpdisctl`.ACC should be hardcoded to 1, to ensure a new sample instruction is selected when a record is discarded._
+
+WARNING: _Should we just require INITVAL to be supported?  Not sure the savings is meaningful here..._
+
+NOTE: _This counter reload mechanism is not guaranteed to be lossless.  The COUNT field may be incremented beyond 0 before the write occurs, and any event increments that occur in the same cycle as the write may be dropped.  Implementations are encouraged to minimize the incidence of skid and dropped counts, as these add noise to the sampling rate._
+
+[[dataregs]]
+==== Supervisor PDIS Sample Data Register Access
+
+When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs accessed using Sscsrind.  See <<samprec>> for details on the sample data.  These registers are populated only when a sampled instruction is a qualified sample.  The registers are mapped to record fields as follows.
+
+.Sample Data Indirect CSR Mappings for RV64
+[width="60%",options="header"]
+|===
+| `siselect` | Indirect Register | Record Field
+.6+| TBD | `sireg` | pdishdrev
+| `sireg2` | pdispc
+| `sireg3` | pdistime
+| `sireg4` | pdislat
+| `sireg5` | pdisadr1
+| `sireg6` | pdisadr2
+.6+| TBD2 | `sireg` | _WPRI_
+| `sireg2` | _WPRI_
+| `sireg3` | 0
+| `sireg4` | 0
+| `sireg5` | 0
+| `sireg6` | 0
+|===
+
+.Sample Data Indirect CSR Mappings for RV32
+[width="60%",options="header"]
+|===
+| `siselect` | Indirect Register | Record Field
+.6+| TBD | `sireg` | pdishdrev[31:0]
+| `sireg2` | pdishdrev[63:32]
+| `sireg3` | pdispc
+| `sireg4` | pdistime
+| `sireg5` | pdislat[31:0]
+| `sireg6` | pdislat[63:32]
+.6+|TBD2 | `sireg` | pdisadr1
+| `sireg2` | pdisadr2
+| `sireg3` | _WPRI_
+| `sireg4` | _WPRI_
+| `sireg5` | _WPRI_
+| `sireg6` | _WPRI_
+|===
+
+If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds TBD or TBD2.
+
+If `mpdisctl`.MEM is hardcoded to 1, the PDIS Sample Data registers are not implemented.
+
+WARNING: _I'd like to avoid the cost of saving/restoring these CSRs for implementations with MEM hardcoded to 1.  Does that require removing the MEM=0 option?_
+
+==== Supervisor PDIS Event Filter Mask Register (`spdisevmask`)
+
+The `spdisevmask` register is a 64-bit WARL register whose value is used for filtering samples.  See <<pdisfilt>>.
+
+.Supervisor PDIS Event Filter Mask Register (`spdisevmask`)
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  56, name: 'MASK'},
+    {bits:  8, name: '0'},
+], config:{lanes: 1, hspace:1024}}
+....
+
+Implementations may opt to hardwire some or all bits to 0.  For RV32, bits 63:32 of `spdisevmask` can be accessed via the `spdisevmaskh` CSR.
+
+==== Supervisor PDIS Event Filter Match Register (`spdisevmatch`)
+
+The `spdisevmatch` register is a 64-bit WARL register whose value is used for filtering samples.  See <<pdisfilt>>.
+
+.Supervisor PDIS Event Filter Match Register (`spdisevmatch`)
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  56, name: 'MATCH'},
+    {bits:  8, name: '0'},
+], config:{lanes: 1, hspace:1024}}
+....
+
+Implementations may opt to hardwire some or all bits to 0.  For RV32, bits 63:32 of `spdisevmatch` can be accessed via the `spdisevmatchh` CSR.
+
+==== Supervisor PDIS Filter Register (`spdisfilter`)
+
+The `spdisfilter` register allows the user to select a sample data latency value (see <<pdislat>>) and compare it with a specified threshold, such that the comparison gates sample qualification.
+
+.Supervisor PDIS Filter Register (`spdisfilter`)
+[wavedrom, , svg]
+....
+{reg: [
+    {bits: 12, name: 'THRESH'},
+    {bits:  1, name: 'INV'},
+    {bits:  3, name: 'LATSEL'},
+    {bits: 48, name: 'WARL', type: 1},
+], config:{lanes: 2, hspace:1024}}
+....
+
+[cols="15%,85%",options="header"]
+|===
+| Field | Description
+| THRESH | The latency threshold to compare with the selected PDIS latency value (see <<PDIS Latencies>>).  The comparison evaluates to true if the latency value is greater than or equal to the threshold value.
+| INV | When set, invert the result of the latency comparison.
+| LATSEL | Selects the PDIS latency value for comparison.  Encodings are as follows.
+
+0: Total latency
+
+1: Dispatch latency
+
+2: Issue latency
+
+3: Execution latency
+
+4: Oldest latency
+|===
+
+Implementations may opt to hardwire some or all bits in `spdisfilter`.
+
+==== Supervisor Counter Overflow Register (`scountovf`)
+
+Bit 1 in `scountovf` reflects the value of the PDIS counter overflow bit, `mpdisctl`.OF.
+
+==== Supervisor Count Inhibit Register (`scountinhibit`)
+
+When PDIS is delegated from M-mode (`mstateen0`.PDIS=1) and counter delegation is enabled (`menvcfg`.CDE=1), `mcountinhibit`[1] is accessible from `scountinhibit`[1].  Otherwise `scountinhibit`[1] is read-only 0.
+
+WARNING: _This is a little awkward.  Before PDIS, `scountinhibit` provided access to `mcountinhibit` & `mcounteren`, allowing S-mode to inhibit only delegated counters.  Since PDIS isn't delegated through `mcounteren` (bit 1 controls S-mode read access to `time`), the PDIS bit has to be handled differently._
+
+The `scountinhibit` register is implemented only if Smcdeleg/Ssccfg is implemented.
+
+==== Virtual Supervisor PDIS Control Register (`vspdisctl`)
+
+If the H extension is implemented, the `vspdisctl` register is a 64-bit WARL register that is VS-mode’s version of supervisor register `sctrctl`. When V=1, `vspdisctl` substitutes for the usual `spdisctl`, so instructions that normally read or modify `spdisctl` actually access `vspdisctl` instead.
+
+`vspdisctl` provides access to `spdisctl` from VS-mode, with the exception of the following fields that have a different function in `vspdisctl`.
+
+[cols="15%,85%",options="header"]
+|===
+| Field | Description
+| PA | Enable recording the guest physical address of sampled explicit memory operations.  See <<samprec>>.
+| S | Enable counting VS-mode instructions.
+| U | Enable counting VU-mode instructions.
+|===
+
+NOTE: _If the implementation cannot provide the guest physical address (GPA) for sampled loads and/or stores, perhaps because the GPA is not stored in the TLB, the `vspdisctl`.PA bit should be hardcoded to 0._
+
+For RV32, bits 63:32 of `vspdisctl` can be accessed via the `vspdisctlh` CSR.
+
+[[stateen]]
+=== State Enable Access Control
+
+When Smstateen is implemented, the `mstateen0`.PDIS bit controls access to PDIS register state from privilege modes less privileged than M-mode.  When `mstateen0`.PDIS=1, supervisor level accesses to PDIS register state behave as described in <<CSRs>> above.  When `mstateen0`.PDIS=0 and the privilege mode is less privileged than M-mode, attempts to access `spdis*` or `vspdisctl` raise an illegal-instruction exception.
+
+When `mstateen0`.PDIS=0, PDIS continues to be able to sample instructions executed in privilege modes less privileged than M-mode.
+
+If the H extension is implemented and `mstateen0`.PDIS=1, the `hstateen0`.PDIS bit controls access to supervisor PDIS state (`spdis*`) when V=1.  `hstateen0`.PDIS is read-only 0 when `mstateen0`.PDIS=0.
+
+When `mstateen0`.PDIS=1 and `hstateen0`.PDIS=1, VS-mode accesses to supervisor PDIS state behave as described in <<CSRs>> above.  When `mstateen0`.PDIS=1 and `hstateen0`.PDIS=0, VS-mode accesses to supervisor PDIS state raise a virtual-instruction exception.
+
+When `hstateen0`.PDIS=0, PDIS continues to be able to sample instructions executed while V=1.
+
+NOTE: _See Sscsrind for how bit 60 in `mstateen0` and `hstateen0` can also restrict access to `sireg*`/`siselect` and `vsireg*`/`vsiselect` from privilege modes less privileged than M-mode._
+
+[[sampsel]]
+=== Instruction Selection
+
+PDIS selects instructions at decode time, before they are are dispatched to the backend (execution) pipeline.  Selection occurs when one of the following occurs.
+
+1. The PDIS counter (<<pdiscnt>>) overflows while there is no PDIS sample active; or
+2. A sample is discarded, due to backpressure or sample filtering, and `mpdisctl`.ACC=1.
+
+A sampled instruction remains active until it either retires, traps, or is flushed by an older mis-speculation.  If the PDIS counter overflows while a sample is active, this is known as a collision, and the counter is simply reloaded without selecting an instruction.
+
+NOTE: _It is strongly recommended that implementations avoid bias in sample selection.  Always choosing an instruction from decoder 0, for instance, could bias selection towards branch targets, or other instructions that are more likely to use decoder 0._
+
+NOTE: _To reduce the likelihood of collisions, implementations should recommend a minimum PDIS counter initial value.  For most implementations, this value should be approximately equal to the size of the out-of-order window._
+
+An implementation may choose to break some complex instructions into a series of micro-operations (uops) for execution.  Such implementations may opt to sample only a single uop, rather than the full execution of the complex instruction.  The implication of such a choice is that the PDIS record fields will reflect only the execution of that uop, and not other uops within the same instruction flow.  In such cases, the pdishdrev.PARTIAL bit is set to 1.
+
+For instructions that perform multiple explicit memory accesses, a single access must be selected for populating the data virtual address, data physical or guest physical address, DSRC, L1MISS, LLMISS, L1TLBMISS, and LLTLBMISS fields.  Optionally other sample record fields may also reflect only values associated with the selected memory access.  Which memory access is selected is implementation-defined.  These instructions always set pdishdrev.PARTIAL to 1.
+
+An implementation may choose to fuse multiple instructions into a single uop for execution such that, if a fused instruction is selected for sampling, the sample record may reflect execution of instruction(s) other than that residing at the PDIS PC address.  The sample record in such cases sets pdishdrev.FUSED to 1.
+
+[[samprec]]
+=== Sample Record
+
+The sample record includes all of the sample data collected during execution of the sampled instruction.  For RV64 the record is 64 bytes, while for RV32 the record is 32 bytes.
+
+.PDIS Sample Record for RV64
+[cols="5%,90%,5%",options="header",grid=rows]
+|===
+| 63 || 0
+3+^| PDIS Header and Events (pdishdrev)
+3+^| PDIS Program Counter (pdispc)
+3+^| PDIS Time (pdistime)
+3+^| PDIS Latencies (pdislat)
+3+^| PDIS Address 1 (pdisadr1)
+3+^| PDIS Address 2 (pdisadr2)
+3+^| _WPRI_
+3+^| _WPRI_
+|===
+
+.PDIS Sample Record for RV32
+[cols="5%,90%,5%",options="header",grid=rows]
+|===
+| 31 || 0
+3+^| pdishdrev[31:0]
+3+^| pdishdrev[63:32]
+3+^| pdispc
+3+^| time[31:0]
+3+^| pdislat[31:0]
+3+^| pdislat[63:32]
+3+^| pdisadr1
+3+^| pdisadr2
+|===
+
+WARNING: _The `time` register is 64b regardless of RV32/RV64, so this RV32 record only captures the lower half of `time`.  That okay?_
+
+[[pdishdrev]]
+==== PDIS Header and Events (pdishdrev)
+
+This section holds the record format, and event information for the sampled instruction.  Any fields that are not populated for a given sample hold 0.
+
+[[recevents]]
+.PDIS Header and Events (pdishdrev)
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  3, name: 'TYPE'},
+    {bits: 29, name: 'HPM[31:3]'},
+    {bits:  1, name: 'FLUSHED'},
+    {bits:  2, name: 'FLUSH'},
+    {bits:  1, name: 'PARTIAL'},
+    {bits:  1, name: 'FUSED'},
+    {bits: 21, name: 'WPRI', type: 1},
+    {bits:  3, name: 'SFMT'},
+    {bits:  3, name: 'FMT'},
+], config:{lanes: 8, hspace:1024}}
+....
+
+[cols="15%,85%",options="header"]
+|===
+| Field | Description
+| TYPE | The type of instruction sampled.  The encoding values are as follows.
+
+0: Other instruction (does not match any of the defined types below)
+
+1: Load instruction
+
+2: Store instruction
+
+3: Load & store instruction
+
+4: Control transfer instruction
+
+5..7: _Reserved_
+
+| HPM__i__ | When `mpdisctl`.HPM__i__=1 and other criteria are met (see <<pdisctl>>), set if the sampled instruction incurred the event selected in `mhpmevent__i__`.
+| FLUSHED | When set, indicates that the sampled instruction did not retire, but instead was flushed due to an earlier misspeculation.
+| FLUSH | When FLUSHED=1, this field provides the type of flush that cleared the sampled instruction.  The encoding values are as follows.
+
+0: Other
+
+1: Branch misprediction
+
+2: Memory ordering violation
+
+3: _Reserved_
+| PARTIAL | When set, indicates that the selected instruction was only partially sampled, such that some elements of the instructions execution may not be captured in the sample data.  See <<sampsel>> for more details.
+| FUSED | When set, indicates that the sampled instruction may have been fused with the instruction immediately preceding it, or immediately following it, such that artifacts of the adjacent, fused instruction may be visible in the sample data.  See <<sampsel>> for more details.
+| SFMT | Record sub-format.  For PDIS v1.0, this value is 0.  Changes to the sub-format imply backwards-compatible changes to the record; e.g., adding a new field to previously WPRI bits.
+| FMT | Record format.  For PDIS v1.0, this value is 0.  Changes to the format are not backwards-compatible; e.g., legacy fields may be moved or redefined.
+|===
+
+[WARNING]
+====
+_Arguably the format fields do not belong in the record, as software would expect the format to be fixed for a given collection.  VM migration presents a case where the format could change, as a VM moves from a system with format A to a system with format B.  However, that format change could be viewed as a virtualization hole, given that running on bare metal would never see a format change mid-collection._
+
+_To avoid this hole, implementations would have to make the format configurable, such that a server profile or platform spec requires a common format to be supported.  Then all systems in a datacenter will support at least that format, and the hypervisor can expose only that format to guests.  Over time, a new format can become the required common format, once most implementations support it.  Though this assumes that implementations will choose to support newer formats, even though they will not be used in datacenters for some time.  This probably warrants discussion in the Hypervisor SIG and with CSPs._
+====
+
+Additional sample data fields are included in PDIS Header & Events when the type is load, store, load & store, or control transfer instruction.  For load, store, and load & store instructions, the following sample data is collected in `spdisdata1`.
+
+.PDIS Header and Events (pdishdrev) for Load and/or Store Instructions
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  3, name: 'TYPE=1,2,3'},
+    {bits: 29, name: 'HPM[31:3]'},
+    {bits:  1, name: 'FLUSHED'},
+    {bits:  2, name: 'FLUSH'},
+    {bits:  1, name: 'PARTIAL'},
+    {bits:  1, name: 'FUSED'},
+    {bits:  1, name: 'L1MISS'},
+    {bits:  1, name: 'LLMISS'},
+    {bits:  4, name: 'DSRC'},
+    {bits:  1, name: 'L1TLBMISS'},
+    {bits:  1, name: 'LLTLBMISS'},
+    {bits: 13, name: 'WPRI', type: 1},
+    {bits:  3, name: 'SFMT'},
+    {bits:  3, name: 'FMT'},
+], config:{lanes: 8, hspace:1024}}
+....
+
+[cols="20%,80%",options="header"]
+|===
+| Field | Description
+| L1MISS | Data request missed the L1 cache.
+| LLMISS | Data request missed the last-level cache.  Optional.
+| DSRC | Data source.  Encodings for this field are implementation-defined.  Optional.
+| L1TLBMISS | Address translation missed the L1 TLB.
+| LLTLBMISS | Address translation missed the last-level TLB.
+| Others | Defined in <<recevents>> above.
+|===
+
+For control transfer instructions, the control transfer type is optionally captured, using a one-hot encoding that simplifies filtering for combinations of types.  The types match those defined by the Smctr/Ssctr and trace specifications.  Additionally, whether the transfer was mispredicted is captured.
+
+.PDIS Header and Events (pdishdrev) for Control Transfer Instructions
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  3, name: 'TYPE=4'},
+    {bits: 29, name: 'HPM[31:3]'},
+    {bits:  1, name: 'FLUSHED'},
+    {bits:  2, name: 'FLUSH'},
+    {bits:  1, name: 'PARTIAL'},
+    {bits:  1, name: 'FUSED'},
+    {bits:  1, name: 'TRET'},
+    {bits:  1, name: 'NTBR'},
+    {bits:  1, name: 'TKBR'},
+    {bits:  2, name: 'WPRI', type: 1},
+    {bits:  1, name: 'INDCALL'},
+    {bits:  1, name: 'DIRCALL'},
+    {bits:  1, name: 'INDJMP'},
+    {bits:  1, name: 'DIRJMP'},
+    {bits:  1, name: 'CORSWAP'},
+    {bits:  1, name: 'RET'},
+    {bits:  1, name: 'INDLJMP'},
+    {bits:  1, name: 'DIRLJMP'},
+    {bits:  1, name: 'MISPRED'},
+    {bits:  7, name: 'WPRI', type: 1},
+    {bits:  3, name: 'SFMT'},
+    {bits:  3, name: 'FMT'},
+], config:{lanes: 8, hspace:1024}}
+....
+
+[cols="15%,85%",options="header"]
+|===
+| Field | Description
+| TRET | Trap return.
+| NTBR | Not-taken branch.
+| TKBR | Taken branch.
+| INDCALL | Indirect call.
+| DIRCALL | Direct call.
+| INDJMP | Indirect jump (without linkage).
+| DIRJMP | Direct jump (without linkage).
+| CORSWAP | Co-routine swap.
+| RET | Function return.
+| INDLJMP | Other indirect jump (with linkage).
+| DIRLJMP | Other direct jump (with linkage).
+| MISPRED | The control transfer was mispredicted.
+| Others | Defined in <<recevents>> above.
+|===
+
+==== PDIS Program Counter (pdispc)
+
+This section holds the PC of the sampled instruction.
+
+WARNING: _Could use upper 5 bit of pdispc for other things, since Sv57x4 defines widest VA as 59 bits._
+
+[[pdislat]]
+==== PDIS Latencies (pdislat)
+
+This section holds the latency values collected during sampled instruction execution.  The format of this section is shown below.
+
+.PDIS Latencies (pdislat)
+[wavedrom, , svg]
+....
+{reg: [
+    {bits: 12, name: 'TOTAL'},
+    {bits: 12, name: 'DISPATCH'},
+    {bits: 12, name: 'ISSUE'},
+    {bits: 12, name: 'EXECUTION'},
+    {bits: 12, name: 'OLDEST'},
+    {bits:  4, name: 'WPRI', type: 1}
+], config:{lanes: 4, hspace:1024}}
+....
+
+[cols="15%,85%",options="header"]
+|===
+| Field | Description
+| TOTAL | The latency from instruction selection to instruction retire, trap, or flush.
+| DISPATCH | The latency from instruction selection to instruction dispatch to the backend.  This will capture any cycles during which backend stalls prevent dispatch.
+| ISSUE | The latency from instruction dispatch until the instruction is issued for execution.  This will capture any cycles during which the instruction is waiting for dependencies to resolve, and waiting for availability of the execution unit.  For loads and stores, this includes the latency to translate the virtual address.
+| EXECUTION | The latency from instruction issue until the instruction has completed execution and is ready to retire.  For loads and stores, this includes the latency to perform the memory access.
+| OLDEST | The latency from when the instruction becomes the oldest unretired instruction until instruction retirement.
+|===
+
+The definitions above were crafted such that Total latency = Dispatch latency + Issue latency + Execution latency + Retire latency.  The Retire latency, defined as the latency from execution completion until the instruction retires, is not captured because it can be derived from the others.
+
+[NOTE]
+====
+_The dispatch point described above is intended to be shared with the Topdown analysis method, typically when instructions/uops are passed from the frontend (e.g., decoder outputs) to the backend (e.g., allocated into the ROB or other backend queue(s)).  Issue latency, then, includes all latency between this dispatch point and the point at which the instruction execution begins.  In a replay-based microarchitecture, this may cover multiple rounds of issue and replay by a scheduler, waiting for dependencies to resolve, the address to be translated, and any required hardware execution resources to come available.  Instruction execution describes the time during which a load or store's explicit memory request is outstanding, or during which a non-memory operation is being executed by an ALU or other execution unit._
+
+_This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, the execution latency would ideally cover all cycles during which any of the constituent operations were executing, even if others are still awaiting issue or even dispatch.  Similarly, the issue latency would cover all cycles during which any of the constituent operations were awaiting issue, even if others are still awaiting dispatch.  For simplicity, implementations may opt to sample a single operation within the instruction, such that the events, addresses, and/or latencies recorded reflect only the single operation._
+====
+
+==== PDIS Time (pdistime)
+
+When `mpdisctl`.TS=1 and `time` is readable in the privilege mode to which PDIS is delegated, this section holds the `time` value of the sample.  Otherwise the field value is 0.
+
+NOTE: _To illustrate this scheme, if PDIS is delegated to S-mode (`mstateen0`.PDIS=1 and `hstateen0`.PDIS=0), then pdistime holds the `time` value if `time` can be read in S-mode (`mcounteren`[1]=1), otherwise it holds 0._
+
+The `time` value should be captured as closely as possible to the time the sampled instruction retires, traps, or is flushed.
+
+==== PDIS Address1 (pdisadr1)
+
+If at least one virtual address, aside from the PC, is captured for this sample, it is held in pdisadr1.  If no virtual address is captured for this sample, pdisadr1 is 0.
+
+If the record's FLUSHED bit is set, pdisadr1 optionally holds the PC of the instruction that caused the flush.  For a mispredict flush, pdisadr1 the PC of the branch or jump that mispredicted.  For a memory ordering violation flush, pdisadr1 is the PC of the load that incurred the violation.  For other flush sources, the value is implementation-defined.
+
+If the instruction was not flushed and performs an explicit memory access, pdisadr1 is the data virtual address of the access.  See <<sampsel>> for how the data virtual address is chosen for multi-access instructions.
+
+If the instruction was not flushed and is an indirect control transfer, which implies that one of INDCALL, INDJMP, INDLJMP, RET, or CORSWAP is set, pdisadr1 holds the target PC of the transfer.  If the instruction is not flushed and is a direct control transfer, an implementation may optionally capture the target PC as pdisadr1.
+
+==== PDIS Address2 (pdisadr2)
+
+If a second address, aside from the PC, is captured for this sample, it is held in pdisadr2.  If no second address is captured for this sample, pdisadr2 is 0.
+
+If the record's FLUSHED bit is set, and the sampled instruction performs an explicit memory access, pdisadr2 may hold the data virtual address of the access.
+
+NOTE: _The virtual address of the access may not be resolved by the time the instruction is flushed.  In such cases, pdisadr2 will hold 0._
+
+If the instruction was not flushed and the instruction is of type load, store, or load & store, then
+
+* if the sampled instruction executed in VS-mode or VU-mode and `vspdisctl`.PA=1, pdisadr2 holds the data guest physical address to which the virtual address in pdisadr1 is mapped;
+* otherwise, if `mpdisctl`.PA=1, pdisadr2 holds the data physical address to which the virtual address in pdisadr1 is mapped.
+
+If the instruction was not flushed, the instruction is of type control transfer, and `mpdisctl`.PTRG=1, pdisadr2 holds the target of the prior control transfer instruction.
+
+[[pdisfilt]]
+=== Sample Filtering
+
+When sampled instructions retire, trap, or are flushed, the sample data collected can optionally be used to filter out (discard) uninteresting samples.
+
+==== Event Filtering
+
+The `spdisevmatch` and `spdisevmask` registers can be used to discard samples whose instruction type and/or events do not match desired values.  These registers are compared with pdishdrev (<<pdishdrev>>), such that the samples are only qualified if the following evaluates to true.
+
+`spdisevmatch` & `spdisevmask` == pdishdrev & `spdisevmask`
+
+==== Latency Filtering
+
+Samples can be discarded if a selected latency value does not exceed a chosen threshold.  The `spdisfilter` is used to select the latency value, and the threshold.  The sample is only qualified if
+
+* `spdislatthread`.INV=0 and selected latency >= `spdisfilter`.THRESH; or
+* `spdislatthread`.INV=1 and selected latency < `spdisfilter`.THRESH.
+
+[[sampmodes]]
+=== Sampling Modes
+
+PDIS supports collecting each sample record individually, as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
+
+To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  The handler can then collect the record and any other state, reload the counter if `spdiscounter`.INITVAL is not implemented, then clear the OF flag before resuming workload execution.
+
+To enable batch mode, PDIS is configured with OF=1, BMIEN=1, and MEM=1 in `mpdisctl`.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `mpdisctl`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `mpdisctl`.BMI=1.  Software can then collect the records, restore the buffer write pointer to 0, adjust BMITH if desired, and clear BMI before resuming workload execution.
+
+For both LCOFIs and LAMBIs associated with PDIS, software is advised to inhibit the PDIS counter (`__x__countinhibit`[1]=1) during handler execution.  This avoids counting or sampling handler instructions.
+
+[[membuff]]
+=== Memory Buffer
+
+WARNING: _Add this as the asynchronous memory buffer definition firms up._
+
+[[perfevents]]
+=== Performance Events
+
+The following performance events are available for counting in Zihpm counters.
+
+[cols="25%,75%",options="header"]
+|===
+| Name | Description
+| INST.SPEC | Instructions decoded
+| INST.BRJMP.SPEC | Control transfer instructions decoded
+| INST.LOAD.SPEC | Load instructions decoded
+| INST.STORE.SPEC | Store instructions decoded
+| INST.MRMW.SPEC | Memory read-modify-write (load and store) instructions decoded
+| PDIS.SAMPLES | Qualified samples recorded
+| PDIS.COLLISIONS | PDIS counter overflows while a PDIS sample remains active
+| PDIS.FILTERED | Samples filtered out
+| PDIS.DROPPED | Sample records dropped as a result of backpressure
+|===
+
+NOTE: _PDIS.SAMPLES in most cases will match the number of samples collected, but if a ciruclar memory buffer is used some samples may be overwritten.  The the total number of PDIS counter overflows can be inferred from PDIS.SAMPLES + PDIS.COLLISIONS + PDIS.FILTERED + PDIS.DROPPED.  The INST.*.SPEC events provide the full sample population from which the selections were chosen._
+
+=== Custom Extensions
+
+No bits within PDIS records are reserved for custom use.  Any record bits listed as WPRI may be used to hold custom fields, with the understanding that they may be reclaimed for future standard fields.
+
+A custom PDIS extension that alters standard PDIS behavior must be associated with a non-zero value within the designated custom bits in `__x__pdisctl`.  When the custom bits hold a non-zero value that enables a custom extension, the extension may alter standard PDIS behavior, which may include redefining standard record fields.
