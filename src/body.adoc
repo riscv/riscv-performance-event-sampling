@@ -70,13 +70,13 @@ WARNING: _Should we make any promises or recommendations for events that do not 
 
 == Precise Decoded Instruction Sampling (Smpdis/Sspdis)
 
-Extensions such as Sspesa and Ssplcofi allow users to perform event-based sampling with precise attribution to an instruction PC.  Smpdis/Sspdis takes a different approach, sampling decoded instructions rather than performance events.  The sampled instructions are chosen in the frontend portion of the pipeline, allowing runtime metadata to be collected by the hardware as the sampled instruction passes through the backend pipeline.  So while event-based sampling with precise attribution allows attributing a single event (the event being sampled) with an instruction, Precise Decoded Instruction Sampling (PDIS) allows collection of multiple events, latencies, and addresses associated with the instruction's execution.  This paints a much more complete picture of the factors that contribute to the instruction's performance, and its impact on overall workload performance.
+Extensions such as Sspesa and Ssplcofi allow users to perform event-based sampling with precise attribution to an instruction PC.  Smpdis/Sspdis takes a different approach, sampling decoded instructions rather than performance events.  The sampled instructions are chosen in the frontend portion of the pipeline, allowing runtime metadata to be collected by the hardware as the sampled instruction passes through the backend pipeline.  So while event-based sampling with precise attribution allows attributing a single event with an instruction, Precise Decoded Instruction Sampling (PDIS) allows collection of multiple events, latencies, and addresses associated with the instruction's execution.
 
 Because sampled instructions are chosen before they execute, it is not known whether they will incur events of interest.  PDIS therefore includes a rich set of sample filtering options, wherein samples that meet the filter criteria are "qualified" and delivered to software, while others are discarded.  This keeps profiling overhead low, by avoiding the overhead of sample collection for uninteresting instructions.
 
 The machine-level extension, Smpdis, encompasses all newly added CSRs and behavior modifications for a hart across all privilege levels. The corresponding supervisor-level extension, Sspdis, is essentially identical to Sspdis, except that it excludes machine-level CSRs and behaviors not intended to be directly accessible at the supervisor level.
 
-NOTE: _When to use event-based sampling (like Sspesa or Ssplcofi) vs instruction-based sampling (Smpids/Sspdis) is an art rather than a science.  Say more here._
+NOTE: _When to use event-based sampling (like Sspesa or Ssplcofi) vs instruction-based sampling (Smpdis/Sspdis) is an art rather than a science.  Say more here._
 
 === CSRs
 
@@ -97,7 +97,7 @@ WARNING: _do we need RV32 support for PDIS?  Are such processors likely to imple
     {bits:  1, name: 'ACC'},
     {bits:  1, name: 'TS'},
     {bits:  1, name: 'PA'},
-    {bits:  1, name: 'PTRG'},
+    {bits:  1, name: 'EPT'},
     {bits: 20, name: 'WARL', type: 1},
     {bits:  3, name: 'Custom'},
     {bits:  1, name: 'U'},
@@ -110,17 +110,17 @@ WARNING: _do we need RV32 support for PDIS?  Are such processors likely to imple
 [cols="15%,85%",options="header"]
 |====
 | Field | Description
-| SEL | Selects the types of instructions to be counted and sampled.  Encodings are as follows.
+| SEL | Selects the type(s) of decoded instructions to be counted and sampled.  Encodings are as follows.
 
-0: All instructions decoded.
+0: All instructions.
 
-1: Load instructions decoded.
+1: Load instructions.
 
-2: Store instructions decoded.
+2: Store instructions.
 
-3: Load and store instructions decoded.
+3: Load and store instructions.
 
-4: Control transfer instructions decoded.
+4: Control transfer instructions.
 
 5..7: _Reserved_
 
@@ -129,8 +129,8 @@ WARNING: _do we need RV32 support for PDIS?  Are such processors likely to imple
 | ACC | Accelerate instruction selection after a sample is filtered out or otherwise discarded.  See <<sampsel>>.
 | TS | Enable recording of a timestamp per record.  See <<samprec>>.
 | PA | Enable recording the physical address of sampled explicit memory operations.  See <<samprec>>.
-| PTRG | Enable recording of the prior control transfer target.  See <<samprec>>.
-| Custom | WARL bits designated for custom use.  The value 0 must correspond to standard behavior.  See <<Custom Extensions>>.
+| EPT | Enable recording of the prior control transfer target.  See <<samprec>>.
+| Custom[2:0] | WARL bits designated for custom use.  The value 0 must correspond to standard behavior.  See <<Custom Extensions>>.
 | U  | Enable counting U-mode instructions.
 | S  | Enable counting S-mode instructions.
 | M  | Enable counting M-mode instructions.
@@ -196,7 +196,7 @@ The `spdiscounter` register is a 64-bit WARL register that holds the PDIS counte
 
 The PDIS counter value, `spdiscounter`.COUNT, is incremented for each decoded instruction that matches the instruction type selected in `mpdisctl`.SEL, while in a privilege mode enabled in `mpdisctl`/`vspdisctl`.  Counting is inhibited when `mcountinhibit`[1]=1.
 
-NOTE: _The PDIS counter is limited to 32 bits since, unlike Zihpm counters, it is used only for sampling, rather than for counting.  When Zihpm counters are used in counting mode they count all events for an application, which can run for minutes or more.  Sampling, on the other hand, requires counters only to count through the sample period, which is typically less than 10ms.  Shorter sample periods (higher sampling rates) are preferred for more accurate and detailed profiles, but minimizing sampling overhead can cause longer periods to be chosen.  With a 32-bit counter, even a 10-wide core running at 6 GHz could accommodate a sample period as long as 71ms._
+NOTE: _The PDIS counter is limited to 32 bits since, unlike Zihpm counters, it is used only for sampling, rather than for counting.  When Zihpm counters are used in counting mode they count all events for an application, which can run for minutes or more.  Sampling, on the other hand, requires counters only to count through the sample period, which is typically on the order of 100,000 instructions.  Shorter sample periods (higher sampling rates) are preferred for more accurate and detailed profiles, but minimizing sampling overhead can cause longer periods to be chosen._
 
 If the INITVAL field is supported then hardware writes the COUNT field with the value held in the INITVAL field when the PDIS counter overflows, such that a hardware update causes `spdiscounter`.COUNT[31] to transition from 1 to 0.  If the INITVAL field is not supported, `spdiscounter`[63:32] is read-only 0.
 
@@ -215,13 +215,13 @@ When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs acce
 [width="60%",options="header"]
 |===
 | `siselect` | Indirect Register | Record Field
-.6+| TBD | `sireg` | pdishdrev
+.6+| 0x7E | `sireg` | pdishdrev
 | `sireg2` | pdispc
 | `sireg3` | pdistime
 | `sireg4` | pdislat
 | `sireg5` | pdisadr1
 | `sireg6` | pdisadr2
-.6+| TBD2 | `sireg` | _WPRI_
+.6+| 0x7F | `sireg` | _WPRI_
 | `sireg2` | _WPRI_
 | `sireg3` | 0
 | `sireg4` | 0
@@ -233,13 +233,13 @@ When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs acce
 [width="60%",options="header"]
 |===
 | `siselect` | Indirect Register | Record Field
-.6+| TBD | `sireg` | pdishdrev[31:0]
+.6+| 0x7E | `sireg` | pdishdrev[31:0]
 | `sireg2` | pdishdrev[63:32]
 | `sireg3` | pdispc
 | `sireg4` | pdistime
 | `sireg5` | pdislat[31:0]
 | `sireg6` | pdislat[63:32]
-.6+|TBD2 | `sireg` | pdisadr1
+.6+| 0x7F | `sireg` | pdisadr1
 | `sireg2` | pdisadr2
 | `sireg3` | _WPRI_
 | `sireg4` | _WPRI_
@@ -247,11 +247,13 @@ When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs acce
 | `sireg6` | _WPRI_
 |===
 
-If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds TBD or TBD2.
+If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds 0x7E or 0x7F.
 
 If `mpdisctl`.MEM is hardcoded to 1, the PDIS Sample Data registers are not implemented.
 
 WARNING: _I'd like to avoid the cost of saving/restoring these CSRs for implementations with MEM hardcoded to 1.  Does that require removing the MEM=0 option?_
+
+WARNING: _0x7E and 0x7F are proposed `*iselect` index values._
 
 ==== Supervisor PDIS Event Filter Mask Register (`spdisevmask`)
 
@@ -314,6 +316,8 @@ The `spdisfilter` register allows the user to select a sample data latency value
 3: Execution latency
 
 4: Oldest latency
+
+See <<pdislat>> for details on the latency values.
 |===
 
 Implementations may opt to hardwire some or all bits in `spdisfilter`.
@@ -638,7 +642,7 @@ If the instruction was not flushed and the instruction is of type load, store, o
 * if the sampled instruction executed in VS-mode or VU-mode and `vspdisctl`.PA=1, pdisadr2 holds the data guest physical address to which the virtual address in pdisadr1 is mapped;
 * otherwise, if `mpdisctl`.PA=1, pdisadr2 holds the data physical address to which the virtual address in pdisadr1 is mapped.
 
-If the instruction was not flushed, the instruction is of type control transfer, and `mpdisctl`.PTRG=1, pdisadr2 holds the target of the prior control transfer instruction.
+If the instruction was not flushed, the instruction is of type control transfer, and `mpdisctl`.EPT=1, pdisadr2 holds the target of the prior control transfer instruction.
 
 [[pdisfilt]]
 === Sample Filtering
@@ -693,7 +697,7 @@ The following performance events are available for counting in Zihpm counters.
 | PDIS.DROPPED | Sample records dropped as a result of backpressure
 |===
 
-NOTE: _PDIS.SAMPLES in most cases will match the number of samples collected, but if a ciruclar memory buffer is used some samples may be overwritten.  The the total number of PDIS counter overflows can be inferred from PDIS.SAMPLES + PDIS.COLLISIONS + PDIS.FILTERED + PDIS.DROPPED.  The INST.*.SPEC events provide the full sample population from which the selections were chosen._
+NOTE: _PDIS.SAMPLES in most cases will match the number of samples collected, but if a circular memory buffer is used some samples may be overwritten.  The total number of PDIS counter overflows can be inferred from PDIS.SAMPLES + PDIS.COLLISIONS + PDIS.FILTERED + PDIS.DROPPED.  The INST.*.SPEC events provide the full sample population from which the selections were chosen._
 
 === Custom Extensions
 
