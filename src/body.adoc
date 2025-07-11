@@ -438,7 +438,9 @@ This section holds the record format, and event information for the sampled inst
     {bits:  2, name: 'FLUSH'},
     {bits:  1, name: 'PARTIAL'},
     {bits:  1, name: 'FUSED'},
-    {bits: 21, name: 'WPRI', type: 1},
+    {bits:  1, name: 'ITMISS'},
+    {bits:  1, name: 'ICMISS'},
+    {bits: 19, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -474,6 +476,8 @@ This section holds the record format, and event information for the sampled inst
 3: _Reserved_
 | PARTIAL | When set, indicates that the selected instruction was only partially sampled, such that some elements of the instructions execution may not be captured in the sample data.  See <<sampsel>> for more details.
 | FUSED | When set, indicates that the sampled instruction may have been fused with the instruction immediately preceding it, or immediately following it, such that artifacts of the adjacent, fused instruction may be visible in the sample data.  See <<sampsel>> for more details.
+| ITMISS | When set, indicates that the fetch request for the sampled instruction incurred an ITLB miss.  Only the first instruction to be executed from the fetch line, either at offset 0 or the target of a control transfer, will set ITMISS.
+| ICMISS | When set, indicates that the fetch request for the sampled instruction incurred an instruction cache miss.  Only the first instruction to be executed from the fetch line, either at offset 0 or the target of a control transfer, will set ICMISS.
 | SFMT | Record sub-format.  For PDIS v1.0, this value is 0.  Changes to the sub-format imply backwards-compatible changes to the record; e.g., adding a new field to previously WPRI bits.
 | FMT | Record format.  For PDIS v1.0, this value is 0.  Changes to the format are not backwards-compatible; e.g., legacy fields may be moved or redefined.
 |===
@@ -484,6 +488,8 @@ _Arguably the format fields do not belong in the record, as software would expec
 
 _To avoid this hole, implementations would have to make the format configurable, such that a server profile or platform spec requires a common format to be supported.  Then all systems in a datacenter will support at least that format, and the hypervisor can expose only that format to guests.  Over time, a new format can become the required common format, once most implementations support it.  Though this assumes that implementations will choose to support newer formats, even though they will not be used in datacenters for some time.  This probably warrants discussion in the Hypervisor SIG and with CSPs._
 ====
+
+The TYPE, FLUSHED, FMT, and SFMT fields are required, while other fields are optional.  Unimplemented fields should always report 0.
 
 Additional sample data fields are included in PDIS Header & Events when the type is load, store, load & store, or control transfer instruction.  For load, store, and load & store instructions, the following sample data is collected in `spdisdata1`.
 
@@ -497,12 +503,14 @@ Additional sample data fields are included in PDIS Header & Events when the type
     {bits:  2, name: 'FLUSH'},
     {bits:  1, name: 'PARTIAL'},
     {bits:  1, name: 'FUSED'},
+    {bits:  1, name: 'ITMISS'},
+    {bits:  1, name: 'ICMISS'},
     {bits:  1, name: 'L1MISS'},
     {bits:  1, name: 'LLMISS'},
     {bits:  4, name: 'DSRC'},
     {bits:  1, name: 'L1TLBMISS'},
     {bits:  1, name: 'LLTLBMISS'},
-    {bits: 13, name: 'WPRI', type: 1},
+    {bits: 11, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -519,6 +527,8 @@ Additional sample data fields are included in PDIS Header & Events when the type
 | Others | Defined in <<recevents>> above.
 |===
 
+The L1MISS and L1TLBMISS fields are required, while others are optional.
+
 For control transfer instructions, the control transfer type is optionally captured, using a one-hot encoding that simplifies filtering for combinations of types.  The types match those defined by the Smctr/Ssctr and trace specifications.  Additionally, whether the transfer was mispredicted is captured.
 
 .PDIS Header and Events (pdishdrev) for Control Transfer Instructions
@@ -531,6 +541,8 @@ For control transfer instructions, the control transfer type is optionally captu
     {bits:  2, name: 'FLUSH'},
     {bits:  1, name: 'PARTIAL'},
     {bits:  1, name: 'FUSED'},
+    {bits:  1, name: 'ITMISS'},
+    {bits:  1, name: 'ICMISS'},
     {bits:  1, name: 'TRET'},
     {bits:  1, name: 'NTBR'},
     {bits:  1, name: 'TKBR'},
@@ -544,7 +556,7 @@ For control transfer instructions, the control transfer type is optionally captu
     {bits:  1, name: 'INDLJMP'},
     {bits:  1, name: 'DIRLJMP'},
     {bits:  1, name: 'MISPRED'},
-    {bits:  7, name: 'WPRI', type: 1},
+    {bits:  5, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -567,6 +579,8 @@ For control transfer instructions, the control transfer type is optionally captu
 | MISPRED | The control transfer was mispredicted.
 | Others | Defined in <<recevents>> above.
 |===
+
+All of the fields defined for control transfer instructions above are optional.
 
 ==== PDIS Program Counter (pdispc)
 
@@ -610,6 +624,8 @@ _The dispatch point described above is intended to be shared with the Topdown an
 
 _This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, the execution latency would ideally cover all cycles during which any of the constituent operations were executing, even if others are still awaiting issue or even dispatch.  Similarly, the issue latency would cover all cycles during which any of the constituent operations were awaiting issue, even if others are still awaiting dispatch.  For simplicity, implementations may opt to sample a single operation within the instruction, such that the events, addresses, and/or latencies recorded reflect only the single operation._
 ====
+
+The TOTAL latency field is required, while others are optional.  Any unimplemented latency fields should report 0.
 
 ==== PDIS Time (pdistime)
 
