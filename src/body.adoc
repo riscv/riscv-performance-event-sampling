@@ -215,13 +215,13 @@ When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs acce
 [width="60%",options="header"]
 |===
 | `siselect` | Indirect Register | Record Field
-.6+| 0x7E | `sireg` | pdishdrev
+.6+| 0x60 | `sireg` | pdishdrev
 | `sireg2` | pdispc
 | `sireg3` | pdistime
 | `sireg4` | pdislat
 | `sireg5` | pdisadr1
 | `sireg6` | pdisadr2
-.6+| 0x7F | `sireg` | _WPRI_
+.6+| 0x61 | `sireg` | _WPRI_
 | `sireg2` | _WPRI_
 | `sireg3` | 0
 | `sireg4` | 0
@@ -233,13 +233,13 @@ When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs acce
 [width="60%",options="header"]
 |===
 | `siselect` | Indirect Register | Record Field
-.6+| 0x7E | `sireg` | pdishdrev[31:0]
+.6+| 0x60 | `sireg` | pdishdrev[31:0]
 | `sireg2` | pdishdrev[63:32]
 | `sireg3` | pdispc
 | `sireg4` | pdistime
 | `sireg5` | pdislat[31:0]
 | `sireg6` | pdislat[63:32]
-.6+| 0x7F | `sireg` | pdisadr1
+.6+| 0x61 | `sireg` | pdisadr1
 | `sireg2` | pdisadr2
 | `sireg3` | _WPRI_
 | `sireg4` | _WPRI_
@@ -249,11 +249,11 @@ When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs acce
 
 If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds 0x7E or 0x7F.
 
-If `mpdisctl`.MEM is hardcoded to 1, the PDIS Sample Data registers are not implemented.
+If `mpdisctl`.MEM is hardcoded to 1, implying that the implementation only supports recording of sample data to memory, the PDIS Sample Data registers are not implemented.
 
 WARNING: _I'd like to avoid the cost of saving/restoring these CSRs for implementations with MEM hardcoded to 1.  Does that require removing the MEM=0 option?_
 
-WARNING: _0x7E and 0x7F are proposed `*iselect` index values._
+WARNING: _0x60 and 0x61 are proposed `*iselect` index values._
 
 ==== Supervisor PDIS Event Filter Mask Register (`spdisevmask`)
 
@@ -287,7 +287,7 @@ Implementations may opt to hardwire some or all bits to 0.  For RV32, bits 63:32
 
 ==== Supervisor PDIS Filter Register (`spdisfilter`)
 
-The `spdisfilter` register allows the user to select a sample data latency value (see <<pdislat>>) and compare it with a specified threshold, such that the comparison gates sample qualification.
+The `spdisfilter` register is a WARL register that allows the user to filter records based on fields other than those in pdishdrev.
 
 .Supervisor PDIS Filter Register (`spdisfilter`)
 [wavedrom, , svg]
@@ -303,7 +303,7 @@ The `spdisfilter` register allows the user to select a sample data latency value
 [cols="15%,85%",options="header"]
 |===
 | Field | Description
-| THRESH | The latency threshold to compare with the selected PDIS latency value (see <<PDIS Latencies>>).  The comparison evaluates to true if the latency value is greater than or equal to the threshold value.
+| THRESH | The latency threshold to compare with the selected PDIS latency value (see <<pdislat>>).  The comparison evaluates to true if the latency value is greater than or equal to the threshold value.
 | INV | When set, invert the result of the latency comparison.
 | LATSEL | Selects the PDIS latency value for comparison.  Encodings are as follows.
 
@@ -320,7 +320,7 @@ The `spdisfilter` register allows the user to select a sample data latency value
 See <<pdislat>> for details on the latency values.
 |===
 
-Implementations may opt to hardwire some or all bits in `spdisfilter`.
+If latency filtering is not supported, `spdisfilter` should be read-only 0.  Otherwise, THRESH and INV must remain writable, while LATSEL may be hardcoded to 0, implying that only filtering by "Total latency" is supported.
 
 ==== Supervisor Counter Overflow Register (`scountovf`)
 
@@ -384,6 +384,8 @@ NOTE: _To reduce the likelihood of collisions, implementations should recommend 
 An implementation may choose to break some complex instructions into a series of micro-operations (uops) for execution.  Such implementations may opt to sample only a single uop, rather than the full execution of the complex instruction.  The implication of such a choice is that the PDIS record fields will reflect only the execution of that uop, and not other uops within the same instruction flow.  In such cases, the pdishdrev.PARTIAL bit is set to 1.
 
 For instructions that perform multiple explicit memory accesses, a single access must be selected for populating the data virtual address, data physical or guest physical address, DSRC, L1MISS, LLMISS, L1TLBMISS, and LLTLBMISS fields.  Optionally other sample record fields may also reflect only values associated with the selected memory access.  Which memory access is selected is implementation-defined.  These instructions always set pdishdrev.PARTIAL to 1.
+
+NOTE: _It is recommended that implementations avoid bias when choosing a single memory access from among multiple._
 
 An implementation may choose to fuse multiple instructions into a single uop for execution such that, if a fused instruction is selected for sampling, the sample record may reflect execution of instruction(s) other than that residing at the PDIS PC address.  The sample record in such cases sets pdishdrev.FUSED to 1.
 
@@ -683,9 +685,9 @@ Samples can be discarded if a selected latency value does not exceed a chosen th
 
 PDIS supports collecting each sample record individually, as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
 
-To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  The handler can then collect the record and any other state, reload the counter if `spdiscounter`.INITVAL is not implemented, then clear the OF flag before resuming workload execution.
+To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  The handler can then collect the record, from the PDIS Memory Buffer (<<membuff>>) if `mpdisctl`.MEM=1 or from PDIS Sample Data Registers (<<dataregs>>) if `mpdisctl`.MEM=0, along with any other state desired.  It must then reload the counter if `spdiscounter`.INITVAL is not implemented, then clear the OF flag before resuming workload execution.
 
-To enable batch mode, PDIS is configured with OF=1, BMIEN=1, and MEM=1 in `mpdisctl`.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `mpdisctl`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `mpdisctl`.BMI=1.  Software can then collect the records, restore the buffer write pointer to 0, adjust BMITH if desired, and clear BMI before resuming workload execution.
+To enable batch mode, PDIS is configured with OF=1, BMIEN=1, and MEM=1 in `mpdisctl`.  If `mpdisctl`.MEM is hardcoded to 0, batch mode is not supported.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `mpdisctl`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `mpdisctl`.BMI=1.  Software can then collect the records, restore the buffer write pointer to 0, adjust BMITH if desired, and clear BMI before resuming workload execution.
 
 For both LCOFIs and LAMBIs associated with PDIS, software is advised to inhibit the PDIS counter (`__x__countinhibit`[1]=1) during handler execution.  This avoids counting or sampling handler instructions.
 
