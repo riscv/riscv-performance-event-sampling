@@ -377,15 +377,13 @@ PDIS selects instructions at decode time, before they are are dispatched to the 
 
 A sampled instruction remains active until it either retires, traps, or is flushed by an older mis-speculation.  If the PDIS counter overflows while a sample is active, this is known as a collision, and the counter is simply reloaded without selecting an instruction.
 
-NOTE: _It is strongly recommended that implementations avoid bias in sample selection.  Always choosing an instruction from decoder 0, for instance, could bias selection towards branch targets, or other instructions that are more likely to use decoder 0._
-
 NOTE: _To reduce the likelihood of collisions, implementations should recommend a minimum PDIS counter initial value.  For most implementations, this value should be approximately equal to the size of the out-of-order window._
 
 An implementation may choose to break some complex instructions into a series of micro-operations (uops) for execution.  Such implementations may opt to sample only a single uop, rather than the full execution of the complex instruction.  The implication of such a choice is that the PDIS record fields will reflect only the execution of that uop, and not other uops within the same instruction flow.  In such cases, the pdishdrev.PARTIAL bit is set to 1.
 
 For instructions that perform multiple explicit memory accesses, a single access must be selected for populating the data virtual address, data physical or guest physical address, DSRC, L1MISS, LLMISS, L1TLBMISS, and LLTLBMISS fields.  Optionally other sample record fields may also reflect only values associated with the selected memory access.  Which memory access is selected is implementation-defined.  These instructions always set pdishdrev.PARTIAL to 1.
 
-NOTE: _It is recommended that implementations avoid bias when choosing a single memory access from among multiple._
+NOTE: _It is strongly recommended that implementations avoid bias in instruction selection.  Always choosing an instruction from decoder 0, for instance, could bias selection towards branch targets, or other instructions that are more likely to use decoder 0.  Similarly, when selecting a single memory access from among multiple, avoiding bias to the degree possible will produce the most representative profile._
 
 An implementation may choose to fuse multiple instructions into a single uop for execution such that, if a fused instruction is selected for sampling, the sample record may reflect execution of instruction(s) other than that residing at the PDIS PC address.  The sample record in such cases sets pdishdrev.FUSED to 1.
 
@@ -604,7 +602,10 @@ This section holds the latency values collected during sampled instruction execu
     {bits: 12, name: 'ISSUE'},
     {bits: 12, name: 'EXECUTION'},
     {bits: 12, name: 'OLDEST'},
-    {bits:  4, name: 'WPRI', type: 1}
+    {bits:  1, name: 'DISPV'},
+    {bits:  1, name: 'ISSV'},
+    {bits:  1, name: 'EXECV'},
+    {bits:  1, name: 'OLDV'},
 ], config:{lanes: 4, hspace:1024}}
 ....
 
@@ -616,7 +617,13 @@ This section holds the latency values collected during sampled instruction execu
 | ISSUE | The latency from instruction dispatch until the instruction is issued for execution.  This will capture any cycles during which the instruction is waiting for dependencies to resolve, and waiting for availability of the execution unit.  For loads and stores, this includes the latency to translate the virtual address.
 | EXECUTION | The latency from instruction issue until the instruction has completed execution and is ready to retire.  For loads and stores, this includes the latency to perform the memory access.
 | OLDEST | The latency from when the instruction becomes the oldest unretired instruction until instruction retirement.
+| DISPV | The DISPATCH field is valid.
+| ISSV | The ISSUE field is valid.
+| EXECV | The EXECUTION field is valid.
+| OLDV | The OLDEST field is valid.
 |===
+
+TOTAL is a required field, while other latency fields are optional.  For any latency fields that are not implemented, both the latency field and the corresponding valid bit should report 0.
 
 The definitions above were crafted such that Total latency = Dispatch latency + Issue latency + Execution latency + Retire latency.  The Retire latency, defined as the latency from execution completion until the instruction retires, is not captured because it can be derived from the others.
 
@@ -626,8 +633,6 @@ _The dispatch point described above is intended to be shared with the Topdown an
 
 _This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, the execution latency would ideally cover all cycles during which any of the constituent operations were executing, even if others are still awaiting issue or even dispatch.  Similarly, the issue latency would cover all cycles during which any of the constituent operations were awaiting issue, even if others are still awaiting dispatch.  For simplicity, implementations may opt to sample a single operation within the instruction, such that the events, addresses, and/or latencies recorded reflect only the single operation._
 ====
-
-The TOTAL latency field is required, while others are optional.  Any unimplemented latency fields should report 0.
 
 ==== PDIS Time (pdistime)
 
@@ -649,7 +654,7 @@ If the instruction was not flushed and is an indirect control transfer, which im
 
 ==== PDIS Address2 (pdisadr2)
 
-If a second address, aside from the PC, is captured for this sample, it is held in pdisadr2.  If no second address is captured for this sample, pdisadr2 is 0.
+If an additional address is captured for this sample, aside from the PC and pdisadr1, it is held in pdisadr2.  If no additional address is captured for this sample, pdisadr2 is 0.
 
 If the record's FLUSHED bit is set, and the sampled instruction performs an explicit memory access, pdisadr2 may hold the data virtual address of the access.
 
@@ -716,6 +721,8 @@ The following performance events are available for counting in Zihpm counters.
 |===
 
 NOTE: _PDIS.SAMPLES in most cases will match the number of samples collected, but if a circular memory buffer is used some samples may be overwritten.  The total number of PDIS counter overflows can be inferred from PDIS.SAMPLES + PDIS.COLLISIONS + PDIS.FILTERED + PDIS.DROPPED.  The INST.*.SPEC events provide the full sample population from which the selections were chosen._
+
+WARNING: _This assumes these INST*.SPEC events count instructions as they are decoded, rather than as they are executed.  We should make sure the Events TG wants that.  If not, we could have separate INST.DEC*.SPEC events here._
 
 === Custom Extensions
 
