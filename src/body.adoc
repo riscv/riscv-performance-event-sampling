@@ -720,6 +720,8 @@ The following performance events are available for counting in Zihpm counters.
 | PDIS.DROPPED | Sample records dropped as a result of backpressure
 |===
 
+NOTE: _Some of the event listed above are defined as optional in the RISC-V Hart Performance Events Specification.  When PDIS is implemented, these events become required._
+
 NOTE: _PDIS.SAMPLES in most cases will match the number of samples collected, but if a circular memory buffer is used some samples may be overwritten.  The total number of PDIS counter overflows can be inferred from PDIS.SAMPLES + PDIS.COLLISIONS + PDIS.FILTERED + PDIS.DROPPED.  The INST.*.SPEC events provide the full sample population from which the selections were chosen._
 
 WARNING: _This assumes these INST*.SPEC events count instructions as they are decoded, rather than as they are executed.  We should make sure the Events TG wants that.  If not, we could have separate INST.DEC*.SPEC events here._
