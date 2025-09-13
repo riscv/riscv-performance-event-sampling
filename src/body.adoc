@@ -149,7 +149,7 @@ When the PDIS counter overflows, a decoded instruction is selected for sampling.
 
 NOTE: _It is not required that the instruction that caused overflow is selected, but it is recommended that implementations minimize any skid between the overflow instruction and the selected instruction._
 
-When the instruction completes, either by retiring, trapping, or being flushed by an older misspeculation, filtering is applied to the sample data.  See <<pdisfilt>> for details on sample filtering.  If the filter criteria are not met, the sample is discarded, otherwise the sample is qualified.
+When the instruction completes, either by retiring, trapping, or being flushed by an older mis-speculation, filtering is applied to the sample data.  See <<pdisfilt>> for details on sample filtering.  If the filter criteria are not met, the sample is discarded, otherwise the sample is qualified.
 
 If the selected instruction is a qualified sample, the sample is recorded.  If MEM=1, the sample record (see <<samprec>>) is written to memory (see <<membuff>>).  If MEM=0, the sample is recorded to CSRs, see <<dataregs>>.
 
@@ -159,7 +159,7 @@ If OF=0 and a sample is qualified, OF transitions to 1 and a local counter overf
 
 Bit 1 in `mcountinhibit` controls whether the PDIS counter, `spdiscounter`.COUNT, increments.  When `mcountinhibit`[1]=1, the PDIS counter does not increment.
 
-WARNING: _I'd like to have a way to set `mcountinhibit`[1] on any PDIS LCOFI, or maybe just any LCOFI.  But this probably should be a general mechanism for inhibiting selected counters on LCOFI, and Linux doesn't support any of the existing freeze mechanisms.  This means PDIS will count LCOFI handler instructions, at least until the handler inhibits counters.  But that's the same for all other counters as well.  We could add a (fast-track?) freeze-on-LCOFI extension if we think this is a problem._
+WARNING: _We hope to add a general counter-freeze mechanism in the future that will allow the user to choose to inhibit counting for select counters during LCOFI handling.  Until then software will need to set `mcountinhibit`[1] to stop PDIS counting during the LCOFI handler._
 
 ==== Supervisor PDIS Control Register (`spdisctl`)
 
@@ -322,9 +322,7 @@ Bit 1 in `scountovf` reflects the value of the PDIS counter overflow bit, `mpdis
 
 When PDIS is delegated from M-mode (`mstateen0`.PDIS=1) and counter delegation is enabled (`menvcfg`.CDE=1), `mcountinhibit`[1] is accessible from `scountinhibit`[1].  Otherwise `scountinhibit`[1] is read-only 0.
 
-WARNING: _This is a little awkward.  Before PDIS, `scountinhibit` provided access to `mcountinhibit` & `mcounteren`, allowing S-mode to inhibit only delegated counters.  Since PDIS isn't delegated through `mcounteren` (bit 1 controls S-mode read access to `time`), the PDIS bit has to be handled differently._
-
-The `scountinhibit` register is implemented only if Smcdeleg/Ssccfg is implemented.
+WARNING: _Before PDIS, `scountinhibit` provided access to `mcountinhibit` & `mcounteren`, allowing S-mode to inhibit only delegated counters.  Since PDIS isn't delegated through `mcounteren` (bit 1 controls S-mode read access to `time`), the PDIS bit has to be handled differently._
 
 ==== Virtual Supervisor PDIS Control Register (`vspdisctl`)
 
@@ -456,7 +454,7 @@ This section holds the record format, and event information for the sampled inst
 5..7: _Reserved_
 
 | HPM__i__ | When `mpdisctl`.HPM__i__=1 and other criteria are met (see <<pdisctl>>), set if the sampled instruction incurred the event selected in `mhpmevent__i__`.
-| FLUSHED | When set, indicates that the sampled instruction did not retire, but instead was flushed due to an earlier misspeculation.
+| FLUSHED | When set, indicates that the sampled instruction did not retire, but instead was flushed due to an earlier mis-speculation.
 | FLUSH | When FLUSHED=1, this field provides the type of flush that cleared the sampled instruction.  The encoding values are as follows.
 
 0: Other
