@@ -360,7 +360,7 @@ NOTE: _See Sscsrind for how bit 60 in `mstateen0` and `hstateen0` can also restr
 [[sampsel]]
 === Instruction Selection
 
-PDIS selects instructions at decode time, before they are are dispatched to the backend (execution) pipeline.  Selection occurs when one of the following occurs.
+PDIS selects instructions before they are dispatched to the backend (execution) pipeline.  Selection occurs when one of the following occurs.
 
 1. The PDIS counter (<<pdiscnt>>) overflows while there is no PDIS sample active; or
 2. A sample is discarded, due to backpressure or sample filtering, and `mpdisctl`.ACC=1.
@@ -415,7 +415,7 @@ WARNING: _The `time` register is 64b regardless of RV32/RV64, so this RV32 recor
 [[pdishdrev]]
 ==== PDIS Header and Events (pdishdrev)
 
-This section holds the record format, and event information for the sampled instruction.  Any fields that are not populated for a given sample hold 0.
+This section holds event information for the sampled instruction, and the record format.  Any fields that are not populated for a given sample hold 0.
 
 [[recevents]]
 .PDIS Header and Events (pdishdrev)
@@ -464,7 +464,7 @@ This section holds the record format, and event information for the sampled inst
 2: Memory ordering violation
 
 3: _Reserved_
-| PARTIAL | When set, indicates that the selected instruction was only partially sampled, such that some elements of the instructions execution may not be captured in the sample data.  See <<sampsel>> for more details.
+| PARTIAL | When set, indicates that the selected instruction was only partially sampled, such that some elements of the instruction's execution may not be captured in the sample data.  See <<sampsel>> for more details.
 | FUSED | When set, indicates that the sampled instruction may have been fused with the instruction immediately preceding it, or immediately following it, such that artifacts of the adjacent, fused instruction may be visible in the sample data.  See <<sampsel>> for more details.
 | ITMISS | When set, indicates that the fetch request for the sampled instruction incurred an ITLB miss.  Only the first instruction to be executed from the fetch line, either at offset 0 or the target of a control transfer, will set ITMISS.
 | ICMISS | When set, indicates that the fetch request for the sampled instruction incurred an instruction cache miss.  Only the first instruction to be executed from the fetch line, either at offset 0 or the target of a control transfer, will set ICMISS.
