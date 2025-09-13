@@ -680,6 +680,8 @@ The `spdisevmatch` and `spdisevmask` registers can be used to discard samples wh
 
 `spdisevmatch` & `spdisevmask` == pdishdrev & `spdisevmask`
 
+NOTE: _For some filtering configurations, such as sampling only select control transfer types, an implementation could optimize this by selecting only control transfer instructions whose type matches one of those selected.  This effectively moves the filtering from sample end to instruction selection, which will improve efficiency by reducing the number of discarded samples._
+
 ==== Latency Filtering
 
 Samples can be discarded if a selected latency value does not exceed a chosen threshold.  The `spdisfilter` is used to select the latency value, and the threshold.  The sample is only qualified if
