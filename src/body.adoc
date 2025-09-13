@@ -159,8 +159,6 @@ If the selected instruction is a qualified sample, the sample is recorded.  If M
 
 If OF=0 and a sample is qualified, OF transitions to 1 and a local counter overflow interrupt (LCOFI) is pended.  If filtering is not applied to the sample (`spdisevmask`=0 and `spdisfilter`=0), and the sampled instruction neither traps nor is flushed, the LCOFI is guaranteed to be "skidless." Skidless implies that, in the absence of interrupt disabling, the LCOFI is taken before the next instruction in the same privilege mode retires.  This "skidless" LCOFI allows software to collect additional sample state (e.g., general purpose registers, call-stack addresses) before younger instructions can modify it.  For samples that do not meet the criteria that guarantees a skidless LCOFI, it is implementation-defined whether the LCOFI is skidless.
 
-WARNING: _We could support selecting only control flow instructions per transfer type, at the expense of 10 more `mdpisctl` bits (one per type, since we'd need to be able to select combinations of types).  As defined, samples can be filtered by transfer type, but instruction selection does not distinguish between types of control transfers, so there are more records discarded._
-
 ==== Machine Count Inhibit Register (`mcountinhibit`)
 
 Bit 1 in `mcountinhibit` controls whether the PDIS counter, `spdiscounter`.COUNT, increments.  When `mcountinhibit`[1]=1, the PDIS counter does not increment.
