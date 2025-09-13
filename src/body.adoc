@@ -85,8 +85,6 @@ NOTE: _When to use event-based sampling (like Sspesa or Ssplcofi) vs instruction
 
 The `mpdisctl` register is a 64-bit WARL register that configures the PDIS mechanism.  For RV32, bits 63:32 of `mpdisctl` can be accessed via the `mpdisctlh` CSR.
 
-WARNING: _do we need RV32 support for PDIS?  Are such processors likely to implement PDIS?  We skipped it for CTR..._
-
 .Machine PDIS Control Register (`mpdisctl`)
 [wavedrom, , svg]
 ....
