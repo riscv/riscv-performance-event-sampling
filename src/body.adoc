@@ -10,7 +10,7 @@ The Sspesa extension defines a mechanism by which the hart will, upon Zihpm coun
 
 `shpmspc` is an SXLEN-bit read/write register that holds a sample PC value.  `shpmspc` captures a PC value when a Zihpm counter (`mhpmcounter__i__`) overflows, such that `mhpmevent__i__`.OF transitions from 0 to 1 and `__x__ip`.LCOFIP transitions from 0 to 1 (where _x_ reflects the privilege mode to which LCOFIs are delegated).
 
-NOTE: _The dependence on `__x__ip`.LCOFIP serves to ensure that only the first overflow leading to an LCOFI updates `shpmspc`.  If additional counters overflow before the LCOFI trap, the recorded sample PC is not overwritten.  This ensures that the sample PC is consistent with the point where CTR is frozen, if `__x__ctrctl`.LCOFIFRZ=1. The ID of the counter that caused the sample PC update is recorded in `shpmsdata`.CTRID._
+NOTE: _The dependence on `__x__ip`.LCOFIP serves to ensure that only the first overflow leading to an LCOFI updates `shpmspc`.  If additional counters overflow before the LCOFI trap, the recorded sample PC is not overwritten.  This ensures that the sample PC is consistent with the point where CTR is frozen, if `__x__ctrctl`.LCOFIFRZ=1. The ID of the counter that caused the sample PC update is recorded in `shpmsdata`.CNTRID._
 
 .Sample PC Register for SXLEN=64
 [%unbreakable]
@@ -35,9 +35,9 @@ Attempts to access `shpmspc` from VS-mode mode raise a virtual instruction excep
 
 ==== Hardware Performance Monitor Sample Metadata (`shpmsdata`)
 
-`shpmsdata` is an SXLEN-bit read/write WARL register that holds sample metadata.  The CTRID field holds the ID of the counter whose overflow caused the sample metadata to be captured. If more than one counter overflows simultaneously, CTRID holds the ID of the numerically lowest counter.
+`shpmsdata` is an SXLEN-bit read/write WARL register that holds sample metadata.  The CNTRID field holds the ID of the counter whose overflow caused the sample metadata to be captured. If more than one counter overflows simultaneously, CNTRID holds the ID of the numerically lowest counter.
 
-NOTE: _As an example, for simultaneous overflow of `mhpmcounter5` and `mhpmcounter9`, CTRID would hold 5._
+NOTE: _As an example, for simultaneous overflow of `mhpmcounter5` and `mhpmcounter9`, CNTRID would hold 5._
 
 The format of the remaining bits is implementation-defined, serving to provide any metadata necessary to derive the sample PC from `shpmspc` and any other relevant state.  For implementations where `shpmspc` captures the precise sample PC, or where no additional metadata is needed, the remaining `shpmsdata` bits may be hardwired to 0.
 
@@ -46,7 +46,7 @@ The format of the remaining bits is implementation-defined, serving to provide a
 [wavedrom, , svg]
 ....
 {reg: [
-    {bits:  5, name: 'CTRID'},
+    {bits:  5, name: 'CNTRID'},
     {bits:  59, name: 'WARL', type: 1},
 ], config:{lanes: 1, hspace:1024}}
 ....
@@ -138,6 +138,8 @@ WARNING: _do we need RV32 support for PDIS?  Are such processors likely to imple
 |====
 
 NOTE: _The set of performance events with PDIS support is implementation-defined and should be discoverable via the implementation's performance event JSON file.  Events with the 'PdisSupported' (TBD) attribute set to true support PDIS._
+
+WARNING: _Make ACC=1 apply on collisions as well?  Need it if INITVAL is optional._
 
 The M bit is always writable.  The S and U bits are writable if the corresponding privilege mode is implemented.  Otherwise, an implementation may opt to hardwire to 0 any of the other fields described above.  The MEM and ACC fields may be hardwired to 0 or 1.
 
@@ -247,11 +249,11 @@ When `mpdisctl`.MEM=0, sample records are written to a set of indirect CSRs acce
 | `sireg6` | _WPRI_
 |===
 
-If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds 0x7E or 0x7F.
+If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds 0x60 or 0x61.
 
 If `mpdisctl`.MEM is hardcoded to 1, implying that the implementation only supports recording of sample data to memory, the PDIS Sample Data registers are not implemented.
 
-WARNING: _I'd like to avoid the cost of saving/restoring these CSRs for implementations with MEM hardcoded to 1.  Does that require removing the MEM=0 option?_
+WARNING: _I'd like to avoid the cost of saving/restoring these CSRs when MEM=1.  Can we recommend that SW clear them when setting MEM=1?  Or does HW need to make them ROZ?_
 
 WARNING: _0x60 and 0x61 are proposed `*iselect` index values._
 
@@ -336,7 +338,7 @@ The `scountinhibit` register is implemented only if Smcdeleg/Ssccfg is implement
 
 ==== Virtual Supervisor PDIS Control Register (`vspdisctl`)
 
-If the H extension is implemented, the `vspdisctl` register is a 64-bit WARL register that is VS-mode’s version of supervisor register `sctrctl`. When V=1, `vspdisctl` substitutes for the usual `spdisctl`, so instructions that normally read or modify `spdisctl` actually access `vspdisctl` instead.
+If the H extension is implemented, the `vspdisctl` register is a 64-bit WARL register that is VS-mode’s version of supervisor register `spdisctl`. When V=1, `vspdisctl` substitutes for the usual `spdisctl`, so instructions that normally read or modify `spdisctl` actually access `vspdisctl` instead.
 
 `vspdisctl` provides access to `spdisctl` from VS-mode, with the exception of the following fields that have a different function in `vspdisctl`.
 
@@ -709,22 +711,20 @@ The following performance events are available for counting in Zihpm counters.
 [cols="25%,75%",options="header"]
 |===
 | Name | Description
-| INST.SPEC | Instructions decoded
-| INST.BRJMP.SPEC | Control transfer instructions decoded
-| INST.LOAD.SPEC | Load instructions decoded
-| INST.STORE.SPEC | Store instructions decoded
-| INST.MRMW.SPEC | Memory read-modify-write (load and store) instructions decoded
+| INST.DEC.SPEC | Instructions decoded
+| INST.DEC.BRJMP.SPEC | Control transfer instructions decoded
+| INST.DEC.LOAD.SPEC | Load instructions decoded
+| INST.DEC.STORE.SPEC | Store instructions decoded
+| INST.DEC.MRMW.SPEC | Memory read-modify-write (load and store) instructions decoded
 | PDIS.SAMPLES | Qualified samples recorded
 | PDIS.COLLISIONS | PDIS counter overflows while a PDIS sample remains active
 | PDIS.FILTERED | Samples filtered out
 | PDIS.DROPPED | Sample records dropped as a result of backpressure
 |===
 
-NOTE: _Some of the event listed above are defined as optional in the RISC-V Hart Performance Events Specification.  When PDIS is implemented, these events become required._
-
 NOTE: _PDIS.SAMPLES in most cases will match the number of samples collected, but if a circular memory buffer is used some samples may be overwritten.  The total number of PDIS counter overflows can be inferred from PDIS.SAMPLES + PDIS.COLLISIONS + PDIS.FILTERED + PDIS.DROPPED.  The INST.*.SPEC events provide the full sample population from which the selections were chosen._
 
-WARNING: _This assumes these INST*.SPEC events count instructions as they are decoded, rather than as they are executed.  We should make sure the Events TG wants that.  If not, we could have separate INST.DEC*.SPEC events here._
+NOTE: _The RISC-V Hart Performance Events spec includes events like INST.SPEC, which could be counted at decode and hence match INST.DEC.SPEC, or they could be counted further in the pipeline.  The spec doesn't make clear what exactly these events count, hence the INST.DEC.* events defined here._
 
 === Custom Extensions
 
