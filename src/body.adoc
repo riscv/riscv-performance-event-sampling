@@ -139,8 +139,6 @@ WARNING: _do we need RV32 support for PDIS?  Are such processors likely to imple
 
 NOTE: _The set of performance events with PDIS support is implementation-defined and should be discoverable via the implementation's performance event JSON file.  Events with the 'PdisSupported' (TBD) attribute set to true support PDIS._
 
-WARNING: _Make ACC=1 apply on collisions as well?  Need it if INITVAL is optional._
-
 The M bit is always writable.  The S and U bits are writable if the corresponding privilege mode is implemented.  Otherwise, an implementation may opt to hardwire to 0 any of the other fields described above.  The MEM and ACC fields may be hardwired to 0 or 1.
 
 The SEL field allows software to select the types of instructions to be counted and sampled.  The control transfer instruction type includes all instructions that can effect an explicit control transfer change, including branches, jumps, and trap returns.  It does not include instructions that effect a control transfer change as a result of a trap.  The load instruction type includes all instructions that perform an explicit load operation but not an explicit store, the store instruction type includes all instructions that perform an explicit store operation but not an explicit load, and the load & store instruction type includes only instructions that perform both an explicit load and an explicit store.
@@ -191,20 +189,16 @@ The `spdiscounter` register is a 64-bit WARL register that holds the PDIS counte
 |====
 | Field | Description
 | COUNT | PDIS counter value.
-| INITVAL | Optional PDIS counter initial value.
+| INITVAL | PDIS counter initial value.
 |====
 
 The PDIS counter value, `spdiscounter`.COUNT, is incremented for each decoded instruction that matches the instruction type selected in `mpdisctl`.SEL, while in a privilege mode enabled in `mpdisctl`/`vspdisctl`.  Counting is inhibited when `mcountinhibit`[1]=1.
 
 NOTE: _The PDIS counter is limited to 32 bits since, unlike Zihpm counters, it is used only for sampling, rather than for counting.  When Zihpm counters are used in counting mode they count all events for an application, which can run for minutes or more.  Sampling, on the other hand, requires counters only to count through the sample period, which is typically on the order of 100,000 instructions.  Shorter sample periods (higher sampling rates) are preferred for more accurate and detailed profiles, but minimizing sampling overhead can cause longer periods to be chosen._
 
-If the INITVAL field is supported then hardware writes the COUNT field with the value held in the INITVAL field when the PDIS counter overflows, such that a hardware update causes `spdiscounter`.COUNT[31] to transition from 1 to 0.  If the INITVAL field is not supported, `spdiscounter`[63:32] is read-only 0.
+Hardware writes the COUNT field with the value held in the INITVAL field when the PDIS counter overflows, such that a hardware update causes `spdiscounter`.COUNT[31] to transition from 1 to 0.
 
-NOTE: _If INITVAL is not supported, software must configure PDIS to raise an LCOFI for each record, so that the LCOFI handler can reload the counter.  Further, `mpdisctl`.ACC should be hardcoded to 1, to ensure a new sample instruction is selected when a record is discarded._
-
-WARNING: _Should we just require INITVAL to be supported?  Not sure the savings is meaningful here..._
-
-NOTE: _This counter reload mechanism is not guaranteed to be lossless.  The COUNT field may be incremented beyond 0 before the write occurs, and any event increments that occur in the same cycle as the write may be dropped.  Implementations are encouraged to minimize the incidence of skid and dropped counts, as these add noise to the sampling rate._
+NOTE: _This harware counter reload mechanism is not guaranteed to be lossless.  The COUNT field may be incremented beyond 0 before the write occurs, and any event increments that occur in the same cycle as the write may be dropped.  Implementations are encouraged to minimize the incidence of skid and dropped counts, as these add noise to the sampling rate._
 
 [[dataregs]]
 ==== Supervisor PDIS Sample Data Register Access
@@ -692,7 +686,7 @@ Samples can be discarded if a selected latency value does not exceed a chosen th
 
 PDIS supports collecting each sample record individually, as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
 
-To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  The handler can then collect the record, from the PDIS Memory Buffer (<<membuff>>) if `mpdisctl`.MEM=1 or from PDIS Sample Data Registers (<<dataregs>>) if `mpdisctl`.MEM=0, along with any other state desired.  It must then reload the counter if `spdiscounter`.INITVAL is not implemented, then clear the OF flag before resuming workload execution.
+To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  The handler can then collect the record, from the PDIS Memory Buffer (<<membuff>>) if `mpdisctl`.MEM=1 or from PDIS Sample Data Registers (<<dataregs>>) if `mpdisctl`.MEM=0, along with any other state desired.  It must then clear the OF flag before resuming workload execution.
 
 To enable batch mode, PDIS is configured with OF=1, BMIEN=1, and MEM=1 in `mpdisctl`.  If `mpdisctl`.MEM is hardcoded to 0, batch mode is not supported.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `mpdisctl`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `mpdisctl`.BMI=1.  Software can then collect the records, restore the buffer write pointer to 0, adjust BMITH if desired, and clear BMI before resuming workload execution.
 
