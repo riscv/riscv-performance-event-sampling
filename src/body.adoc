@@ -650,7 +650,7 @@ If the record's FLUSHED bit is set, and the sampled instruction performs an expl
 
 NOTE: _The virtual address of the access may not be resolved by the time the instruction is flushed.  In such cases, pdisadr2 will hold 0._
 
-If the instruction was not flushed and the instruction is of type load, store, or load & store, then
+If the instruction was not flushed and the instruction is of type load, store, or load & store, then:
 
 * if the sampled instruction executed in VS-mode or VU-mode and `vspdisctl`.PA=1, pdisadr2 holds the data guest physical address to which the virtual address in pdisadr1 is mapped;
 * otherwise, if `mpdisctl`.PA=1, pdisadr2 holds the data physical address to which the virtual address in pdisadr1 is mapped.
@@ -676,6 +676,8 @@ Samples can be discarded if a selected latency value does not exceed a chosen th
 
 * `spdislatthread`.INV=0 and selected latency >= `spdisfilter`.THRESH; or
 * `spdislatthread`.INV=1 and selected latency < `spdisfilter`.THRESH.
+
+NOTE: _When selecting a latency value for filtering that counts until the sampled instruction retires (i.e., Total latency or Oldest latency), the latency value used in the comparison may be smaller than the value reported in the record.  This is because a precise LCOFI may require some setup time in order to avoid skid, and hence the comparison may occur some fixed number of cycles before retirement._
 
 [[sampmodes]]
 === Sampling Modes
