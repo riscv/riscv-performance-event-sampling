@@ -709,7 +709,7 @@ The following performance events are available for counting in Zihpm counters.
 | INST.DEC.BRJMP.SPEC | Control transfer instructions decoded
 | INST.DEC.LOAD.SPEC | Load instructions decoded
 | INST.DEC.STORE.SPEC | Store instructions decoded
-| INST.DEC.MRMW.SPEC | Memory read-modify-write (load and store) instructions decoded
+| INST.DEC.LDST.SPEC | Load and/or store instructions decoded
 | PDIS.SAMPLES | Qualified samples recorded
 | PDIS.COLLISIONS | PDIS counter overflows while a PDIS sample remains active
 | PDIS.FILTERED | Samples filtered out
