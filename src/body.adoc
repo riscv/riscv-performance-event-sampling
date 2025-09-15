@@ -634,17 +634,17 @@ The `time` value should be captured as closely as possible to the time the sampl
 
 ==== PDIS Address1 (pdisadr1)
 
-If at least one virtual address, aside from the PC, is captured for this sample, it is held in pdisadr1.  If no virtual address is captured for this sample, pdisadr1 is 0.
+If at least one virtual address, aside from the PC, is captured for this sample, it is held in pdisadr1.  Capturing an address (aside from PC) is optional.  If no virtual address is captured for this sample, pdisadr1 is 0.
 
 If the record's FLUSHED bit is set, pdisadr1 optionally holds the PC of the instruction that caused the flush.  For a mispredict flush, pdisadr1 the PC of the branch or jump that mispredicted.  For a memory ordering violation flush, pdisadr1 is the PC of the load that incurred the violation.  For other flush sources, the value is implementation-defined.
 
 If the instruction was not flushed and performs an explicit memory access, pdisadr1 is the data virtual address of the access.  See <<sampsel>> for how the data virtual address is chosen for multi-access instructions.
 
-If the instruction was not flushed and is an indirect control transfer, which implies that one of INDCALL, INDJMP, INDLJMP, RET, or CORSWAP is set, pdisadr1 holds the target PC of the transfer.  If the instruction is not flushed and is a direct control transfer, an implementation may optionally capture the target PC as pdisadr1.
+If the instruction was not flushed and is an indirect control transfer, which implies that the type is one of INDCALL, INDJMP, INDLJMP, RET, or CORSWAP, pdisadr1 holds the target PC of the transfer.  If the instruction is not flushed and is a direct control transfer, an implementation may optionally capture the target PC as pdisadr1.
 
 ==== PDIS Address2 (pdisadr2)
 
-If an additional address is captured for this sample, aside from the PC and pdisadr1, it is held in pdisadr2.  If no additional address is captured for this sample, pdisadr2 is 0.
+If an additional address is captured for this sample, aside from the PC and pdisadr1, it is held in pdisadr2.  Capturing a second address (aside from PC) is optional.  If no additional address is captured for this sample, pdisadr2 is 0.
 
 If the record's FLUSHED bit is set, and the sampled instruction performs an explicit memory access, pdisadr2 may hold the data virtual address of the access.
 
