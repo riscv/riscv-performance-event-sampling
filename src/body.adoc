@@ -198,6 +198,8 @@ Hardware writes the COUNT field with the value held in the INITVAL field when th
 
 NOTE: _This harware counter reload mechanism is not guaranteed to be lossless.  The COUNT field may be incremented beyond 0 before the write occurs, and any event increments that occur in the same cycle as the write may be dropped.  Implementations are encouraged to minimize the incidence of skid and dropped counts, as these add noise to the sampling rate._
 
+WARNING: _Should we skip HW reload when an LCOFI is pended, and leave that to SW?  Otherwise could select a new inst before the sample is collected, and possibly even create race conditions where the sample record is updated while it's being read._
+
 [[dataregs]]
 ==== Supervisor PDIS Sample Data Register Access
 
@@ -682,7 +684,7 @@ NOTE: _When selecting a latency value for filtering that counts until the sample
 [[sampmodes]]
 === Sampling Modes
 
-PDIS supports collecting each sample record individually, as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
+PDIS supports collecting each sample record individually as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
 
 To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  The handler can then collect the record, from the PDIS Memory Buffer (<<membuff>>) if `mpdisctl`.MEM=1 or from PDIS Sample Data Registers (<<dataregs>>) if `mpdisctl`.MEM=0, along with any other state desired.  It must then clear the OF flag before resuming workload execution.
 
