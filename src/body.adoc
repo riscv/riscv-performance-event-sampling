@@ -476,13 +476,6 @@ This section holds event information for the sampled instruction, and the record
 | FMT | Record format.  For PDIS v1.0, this value is 0.  Changes to the format are not backwards-compatible; e.g., legacy fields may be moved or redefined.
 |===
 
-[WARNING]
-====
-_Arguably the format fields do not belong in the record, as software would expect the format to be fixed for a given collection.  VM migration presents a case where the format could change, as a VM moves from a system with format A to a system with format B.  However, that format change could be viewed as a virtualization hole, given that running on bare metal would never see a format change mid-collection._
-
-_To avoid this hole, implementations would have to make the format configurable, such that a server profile or platform spec requires a common format to be supported.  Then all systems in a datacenter will support at least that format, and the hypervisor can expose only that format to guests.  Over time, a new format can become the required common format, once most implementations support it.  Though this assumes that implementations will choose to support newer formats, even though they will not be used in datacenters for some time.  This probably warrants discussion in the Hypervisor SIG and with CSPs._
-====
-
 The TYPE, FLUSHED, FMT, and SFMT fields are required, while other fields are optional.  Unimplemented fields should always report 0.
 
 Additional sample data fields are included in PDIS Header & Events when the type is load, store, load & store, or control transfer instruction.  For load, store, and load & store instructions, the following sample data is collected in `spdisdata1`.
