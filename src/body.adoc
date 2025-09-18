@@ -4,6 +4,8 @@
 
 The Sspesa extension defines a mechanism by which the hart will, upon Zihpm counter overflow, record a PC and metadata associated with the instruction to which the sampled event should be attributed.
 
+=== Sspesa Profile Types and Sources of Error
+
 Sspesa enables generating two types of performance profiles:
 
 * *Event-based performance profiles* in which the weight of an instruction in the profile is approximately proportional to the number of times it was subjected to the event. Event-based profiles are most useful when tracking down the instructions responsible for a problematic performance event. For example, if an application suffers from many L1 data cache misses, a sorted event-based profile obtained for the data L1 cache miss performance event provides an ordered list of the instructions that are responsible for most L1 data cache misses.
@@ -11,13 +13,11 @@ Sspesa enables generating two types of performance profiles:
 
 NOTE: _In contrast to Sspesa, Smpdis/Sspdis (see <<_precise_decoded_instruction_sampling_smpdissspdis>>) create profiles in which an instruction is represented proportionally to its execution count._
 
-Performance profiles obtained through Sspesa are approximate for two reasons. The first is systematic error (or bias) which reduces profile accuracy by attributing a counter overflow to a different instruction than the one that caused it. In event-based profiles this is commonly referred to as skid, e.g., that internal delays cause profiling hardware to missattribute counter overflows. In a time-based profile, skid and biased attribution policies cause samples to be attributed to different instruction(s) than the one(s) of which the core is currently exposing execution time. Systematic errors can be eliminated by adopting appropriate attribution policies, but this may not always be desirable (e.g., due to implementation overheads). For this reason, Sspesa does not require implementations to support precise attribution.
+Performance profiles obtained through Sspesa are approximate for two reasons. The first is systematic error (or bias) which reduces profile accuracy by attributing a counter overflow to a different instruction than the one that caused it. For event-based profiles, implementations are required to support precise attribution (i.e., no bias) because this is the core purpose of the Sspesa extension. For example, upon an overflow in the L1 data cache miss event counter, an Sspesa implementation must report the PC of the instruction that caused the counter overflow.
 
-WARNING: I don't fully understand why we need a separate skid-less extension. I guess this is mainly for event-based profiles because developers would want to know which events are skid-less and which are not. Another option would be to provide this information as metadata for each sample, in which case we might not need Ssplcofi? Depending on what we decide, we may need to modify the text in the above paragraph. --Magnus
+Time-based profiles are more complicated because no specific instruction caused the cycle counter to overflow. A time-based profile is however most useful when each instruction is represented in the profile in proportion to its impact on overall execution time. To create a bias-free profile, the implementation must therefore attribute each sample to the PC(s) of the instruction(s) that the core is (are) exposing execution time of at the time the cycle counter overflows (i.e., time-proportional attribution). Systematic errors can hence be eliminated by adopting time-proportional attribution policies, but this may not always be desirable (e.g., due to implementation overheads). For this reason, Sspesa expects implementations to minimize attribution bias when creating time-based profiles.
 
-Statistical (random) error is the second reason why Sspesa profiles are approximate. The root cause of statistical error is that Sspesa samples the its CSRs, and it is thus unavoidable. Statistical error is however typically negligible when sampling at 4kHz (which is the default sampling frequency of perf). Unlike bias, statistical error goes down as sampling frequency is increased. If statistical error is percieved to be a problem, a higher sampling frequency can be adopted at the cost of increased runtime overhead.
-
-WARNING: I can provide references to papers that back up the negligible error claim above if desirable. --Magnus
+Statistical (random) error is the second reason why Sspesa profiles are approximate. The root cause of statistical error is that Sspesa samples the its CSRs. It is thus unavoidable and affect event-based and time-based profiles equally. Statistical error is however typically negligible when sampling at 4kHz (which is the default sampling frequency of perf). Unlike bias, statistical error goes down as sampling frequency is increased. If statistical error is percieved to be a problem, a higher sampling frequency can be adopted at the cost of increased runtime overhead.
 
 === CSRs
 
