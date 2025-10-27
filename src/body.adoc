@@ -421,13 +421,13 @@ A sampled instruction remains active until it either retires, traps, or is flush
 
 NOTE: _To reduce the likelihood of collisions, implementations should recommend a minimum PDIS counter initial value.  For most implementations, this value should be approximately equal to the size of the out-of-order window._
 
-An implementation may choose to break some complex instructions into a series of micro-operations (uops) for execution.  Such implementations may opt to sample only a single uop, rather than the full execution of the complex instruction.  The implication of such a choice is that the PDIS record fields will reflect only the execution of that uop, and not other uops within the same instruction flow.  In such cases, the pdishdrev.PARTIAL bit is set to 1.
+An implementation may choose to break some complex instructions into a series of micro-operations (uops) for execution.  Such implementations may opt to collect sample data for a single uop, rather than the full execution of the complex instruction.  The implication of such a choice is that many PDIS record fields will reflect only the execution of that uop, and not other uops within the same instruction flow.  In such cases, the pdishdrev.PARTIAL bit is set to 1.
 
-For instructions that perform multiple explicit memory accesses, a single access must be selected for populating the data virtual address, data physical or guest physical address, DSRC, L1MISS, LLMISS, L1TLBMISS, and LLTLBMISS fields.  Optionally other sample record fields may also reflect only values associated with the selected memory access.  Which memory access is selected is implementation-defined.  These instructions always set pdishdrev.PARTIAL to 1.
+For instructions that perform multiple explicit memory accesses, a single access must be selected for populating the data virtual address, data physical or guest physical address, and the memory-specific fields described in <<pdishdrldst>>.  Optionally other sample record fields may also reflect only values associated with the selected memory access.  Which memory access is selected is implementation-defined.  These instructions always set pdishdrev.PARTIAL to 1.
 
 An implementation may choose to fuse multiple instructions into a single uop for execution such that, if a fused instruction is selected for sampling, the sample record may reflect execution of instruction(s) other than that residing at the PDIS PC address.  The sample record in such cases sets pdishdrev.FUSED to 1.
 
-NOTE: _It is strongly recommended that implementations avoid bias in instruction selection.  Always choosing an instruction from decoder 0, for instance, could bias selection towards branch targets, or other instructions that are more likely to use decoder 0.  Similarly, when selecting a single memory access from among multiple, avoiding bias to the degree possible will produce the most representative profile._
+NOTE: _It is strongly recommended that implementations avoid bias in instruction selection.  Always choosing an instruction from decoder 0, for instance, could bias selection towards branch targets, or other instructions that are more likely to use decoder 0.  Similarly, when selecting a single memory access or uop from among multiple, avoiding bias to the degree possible will produce the most representative profile._
 
 [[samprec]]
 === Sample Record
@@ -526,7 +526,14 @@ This section holds the record format, and event information for the sampled inst
 
 The TYPE, FLUSHED, FMT, and SFMT fields are required, while other fields are optional.  Unimplemented fields should always report 0.
 
-Additional sample data fields are included in PDIS Header & Events when the type is load, store, load & store, or control transfer instruction.  For load, store, and load & store instructions, the following sample data is collected in pdishdrev.
+Additional sample data fields are included in PDIS Header & Events when the type is load, store, load & store, or control transfer instruction.
+
+WARNING: _Do we need a discovery mechanism so software can know which optional fields are included?  When not implemented, they always report 0.  Could add a read-only CSR for this?  Or embed it in the record?_
+
+[[pdishdrldst]]
+===== PDIS Header and Events for Load and Store Instructions
+
+For load, store, and load & store instructions, the following sample data is collected in pdishdrev.
 
 .PDIS Header and Events (pdishdrev) for Load and/or Store Instructions
 [wavedrom, , svg]
@@ -563,6 +570,8 @@ Additional sample data fields are included in PDIS Header & Events when the type
 |===
 
 The L1MISS and L1TLBMISS fields are required, while others are optional.
+
+===== PDIS Header and Events for Control Transfer Instructions
 
 For control transfer instructions, the control transfer type is optionally captured, using a one-hot encoding that simplifies filtering for combinations of types.  The types match those defined by the Smctr/Ssctr and trace specifications.  Additionally, whether the transfer was mispredicted is captured.
 
@@ -619,7 +628,6 @@ All of the fields defined for control transfer instructions above are optional.
 
 NOTE: _As an example of using filtering to capture select combinations of control transfer types, to capture only transfers of type INDCALL, INDJMP, or INDLJMP, the mask and match filtering (see <<pdisevfilt>>) should be set to match 0s for all the excluded transfer type bits (DIRLJMP, RET, CORSWAP, DIRJMP, DIRCALL, TKBR, NTBR, and TRET), while leaving the bits for INDCALL, INDJMP, and INDLJMP unmasked._
 
-
 ==== PDIS Program Counter (pdispc)
 
 This section holds the PC of the sampled instruction.
@@ -669,7 +677,7 @@ The definitions above were crafted such that Total latency = Dispatch latency + 
 ====
 _The dispatch point described above is intended to be shared with the Topdown analysis method, typically when instructions/uops are passed from the frontend (e.g., decoder outputs) to the backend (e.g., allocated into the ROB or other backend queue(s)).  Issue latency, then, includes all latency between this dispatch point and the point at which the instruction execution begins.  In a replay-based microarchitecture, this may cover multiple rounds of issue and replay by a scheduler, waiting for dependencies to resolve, the address to be translated, and any required hardware execution resources to come available.  Instruction execution describes the time during which a load or store's explicit memory request is outstanding, or during which a non-memory operation is being executed by an ALU or other execution unit._
 
-_This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, it is implementation-defined how the latency cycles are apportioned, though care should be taken that cycles are not double-counted (e.g., both ISSUE and DISPATCH increment for the same cycle).  One option is to select a single uop to which the latencies apply, though the TOTAL and OLDEST latencies should still end not on uop retirement but on instruction retirement (which could be simultaneous)._
+_This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, it is implementation-defined how the latency cycles are apportioned, though care should be taken that cycles are not double-counted (e.g., both ISSUE and DISPATCH increment for the same clock cycle).  One option is to select a single uop to which the latencies apply, though the TOTAL and OLDEST latencies should still end not on uop retirement but on instruction retirement (which could be simultaneous)._
 ====
 
 WARNING: _Some implementations may execute stores post-retirement.  This scheme does not capture the latency of that memory access.  That may be okay, since post-retire store accesses are off the critical path (don't hold up retire).  But they can occupy queue slots, cause stalls if queues fill, etc.  An altnernative would be to say that such stores are recorded until memory accesses complete?_
