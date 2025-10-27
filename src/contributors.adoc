@@ -6,3 +6,4 @@ This RISC-V specification has been contributed to directly or indirectly by:
 * Beeman Strong <beeman@rivosinc.com>
 * Snehasish Kumar <snehasishk@google.com>
 * Bruce Ableidinger <bableidinger@mips.com>
+* Magnus Jahre <magnus.jahre@ntnu.no>
