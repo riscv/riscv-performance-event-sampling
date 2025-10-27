@@ -15,9 +15,9 @@ Sspesa enables generating two types of performance profiles:
 
 NOTE: _In contrast to Sspesa, Smpdis/Sspdis (see <<smpdis>>) create profiles in which an instruction is represented proportionally to its execution count._
 
-Performance profiles obtained through Sspesa are approximate for two reasons. The first is systematic error (or bias) which reduces profile accuracy by attributing a counter overflow to a different instruction than the one that caused it.  Sspesa aims to eliminate such inaccuracies for events that support precise attribution, and to minimize it for other events.  For example, upon overflow of a counter configured to count an L1 data cache miss event that supports precise attribution, an Sspesa implementation allows the PC of the instruction that caused the counter overflow to be discerned.
+Performance profiles obtained through sampling are approximate for two reasons. The first is systematic error (or bias) which reduces profile accuracy by attributing a counter overflow to a different instruction than the one that caused it.  Sspesa aims to eliminate such inaccuracies for events that support precise attribution, and to minimize it for other events.  For example, upon overflow of a counter configured to count an L1 data cache miss event that supports precise attribution, an Sspesa implementation allows the PC of the instruction that caused the counter overflow to be discerned.
 
-Time-based profiles are more complicated because no specific instruction caused the cycle counter to overflow. A time-based profile is however most useful when each instruction is represented in the profile in proportion to its impact on overall execution time. To create a bias-free profile, the implementation must therefore attribute each sample to the instruction(s) for which the core is exposing execution time (i.e., retiring) in the cycle the counter overflows; this is known as time-proportional attribution. Systematic errors can hence be eliminated by adopting time-proportional attribution policies, but this may not always be practical (e.g., due to implementation overheads). For this reason, it is strongly recommended that implementations minimize attribution bias when creating time-based profiles.
+Time-based profiles are more complicated because no specific instruction caused the cycle counter to overflow. A time-based profile is however most useful when each instruction is represented in the profile in proportion to its impact on overall execution time. To create a bias-free profile, the implementation must therefore attribute each sample to the instruction(s) for which the core is exposing execution time (i.e., retiring) in the cycle the counter overflows; this is known as time-proportional attribution. Systematic errors can hence be eliminated by adopting time-proportional attribution policies, but this may not always be practical (e.g., due to implementation overheads). For this reason, it is strongly recommended that Sspesa implementations minimize attribution bias when creating time-based profiles.
 
 Statistical (or random) error is the second reason why all sample-based profiles are approximate. This is a byproduct of sampling events, rather than collecting attribution information for every event occurrence.  This source of imprecision can be mitigated by increasing the sample rate, though even sampling at 4kHz (the default for Linux perf) typically shows negligible error.
 
@@ -189,7 +189,7 @@ WARNING: _We hope to add a general counter-freeze mechanism in the future that w
 
 ==== Machine Environment Configuration Register (`menvcfg`)
 
-Bit 59 is PDISS.  When set, the PDISS memory buffer is configured for use by supervisor software.  PDISS is used to select the trace write privilege and translation mechanism used by AMB, see Section 1.5 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].
+Bit 59 is PDISS.  When set, the PDIS memory buffer is configured for use by supervisor software.  PDISS is used to select the trace write privilege and translation mechanism used by AMB, see Section 1.5 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].
 
 If `mpdisctl`.MEM is hardcoded to 0, PDISS is hardcoded to 0 as well.
 
@@ -350,13 +350,13 @@ If latency filtering is not supported, `spdisfilter` should be read-only 0.  Oth
 
 ==== Supervisor PDIS AMB Control and Status (`spdisambcs`)
 
-The `spdisambcs` register is the PDIS instatiation of the `sambcs` register defined by the https://github.com/riscv/self-hosted-trace/releases[Ssamb extension].  It is implemented only if `mpdisctl`.MEM is not hardcoded to 0.  See <<membuff>> for PDIS Memory Buffer details.
+The `spdisambcs` register is the PDIS instatiation of the `sambcs` register defined by the Ssamb extension, see Section 1.1.1 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  It is implemented only if `mpdisctl`.MEM is not hardcoded to 0.  See <<membuff>> for PDIS Memory Buffer details.
 
 ==== Supervisor PDIS AMB Address (`spdisambaddr`)
 
-The `spdisambaddr` register is the PDIS instatiation of the `sambaddr` register defined in the Ssamb specification, see https://github.com/riscv/self-hosted-trace/releases[Ssamb extension].  It is implemented only if `mpdisctl`.MEM is not hardcoded to 0.  See <<membuff>> for PDIS Memory Buffer details.
+The `spdisambaddr` register is the PDIS instatiation of the `sambaddr` register defined in the Ssamb specification, see Section 1.1.2 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  It is implemented only if `mpdisctl`.MEM is not hardcoded to 0.  See <<membuff>> for PDIS Memory Buffer details.
 
-For RV64 implementations, bits 6:0 are hardcoded to 0, while for RV32 implementations, bits 5:0 are hardcoded to 0.  This ensures that records are aligned to their size, see <<samprec>>.
+For RV64 implementations, bits 6:0 are hardcoded to 0, while for RV32 implementations, bits 5:0 are hardcoded to 0.  This ensures that records are aligned to their size, see <<samprec>> for details.
 
 ==== Supervisor Counter Overflow Register (`scountovf`)
 
@@ -366,7 +366,7 @@ Bit 1 in `scountovf` reflects the value of the PDIS counter overflow bit, `mpdis
 
 When PDIS is delegated from M-mode (`mstateen0`.PDIS=1) and counter delegation is enabled (`menvcfg`.CDE=1), `mcountinhibit`[1] is accessible from `scountinhibit`[1].  Otherwise `scountinhibit`[1] is read-only 0.
 
-WARNING: _Before PDIS, `scountinhibit` provided access to `mcountinhibit` & `mcounteren`, allowing S-mode to inhibit only delegated counters.  Since PDIS isn't delegated through `mcounteren` (bit 1 controls read access to `time`), the PDIS bit has to be handled differently._
+NOTE: _Before PDIS, `scountinhibit` provided access to `mcountinhibit` & `mcounteren`, allowing S-mode to inhibit only delegated counters.  Since PDIS isn't delegated through `mcounteren` (bit 1 controls read access to `time`), the PDIS bit has to be handled differently._
 
 ==== Hypervisor Environment Configuration Register (`henvcfg`)
 
@@ -397,7 +397,7 @@ For RV32, bits 63:32 of `vspdisctl` can be accessed via the `vspdisctlh` CSR.
 [[stateen]]
 === State Enable Access Control
 
-When Smstateen is implemented, the `mstateen0`.PDIS bit controls access to PDIS register state from privilege modes less privileged than M-mode.  When `mstateen0`.PDIS=1, supervisor level accesses to PDIS register state behave as described in <<CSRs>> above.  When `mstateen0`.PDIS=0 and the privilege mode is less privileged than M-mode, attempts to access `spdis*` or `vspdisctl` raise an illegal-instruction exception.
+When Smstateen is implemented, the `mstateen0`.PDIS bit controls access to PDIS register state from privilege modes less privileged than M-mode.  When `mstateen0`.PDIS=1, supervisor level accesses to PDIS register state behave as described in <<CSRs>> above.  When `mstateen0`.PDIS=0 and the privilege mode is less privileged than M-mode, attempts to access `spdis*` or `vspdisctl` raise an illegal-instruction exception, while `scountovf`[1], `scountinhibit`[1], and `henvcfg`.PDISV are read-only 0.
 
 When `mstateen0`.PDIS=0, PDIS continues to be able to sample instructions executed in privilege modes less privileged than M-mode.
 
@@ -669,10 +669,8 @@ The definitions above were crafted such that Total latency = Dispatch latency + 
 ====
 _The dispatch point described above is intended to be shared with the Topdown analysis method, typically when instructions/uops are passed from the frontend (e.g., decoder outputs) to the backend (e.g., allocated into the ROB or other backend queue(s)).  Issue latency, then, includes all latency between this dispatch point and the point at which the instruction execution begins.  In a replay-based microarchitecture, this may cover multiple rounds of issue and replay by a scheduler, waiting for dependencies to resolve, the address to be translated, and any required hardware execution resources to come available.  Instruction execution describes the time during which a load or store's explicit memory request is outstanding, or during which a non-memory operation is being executed by an ALU or other execution unit._
 
-_This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, the execution latency would ideally cover all cycles during which any of the constituent operations were executing, even if others are still awaiting issue or even dispatch.  Similarly, the issue latency would cover all cycles during which any of the constituent operations were awaiting issue, even if others are still awaiting dispatch.  For simplicity, implementations may opt to sample a single operation within the instruction, such that the events, addresses, and/or latencies recorded reflect only the single operation._
+_This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, it is implementation-defined how the latency cycles are apportioned, though care should be taken that cycles are not double-counted (e.g., both ISSUE and DISPATCH increment for the same cycle).  One option is to select a single uop to which the latencies apply, though the TOTAL and OLDEST latencies should still end not on uop retirement but on instruction retirement (which could be simultaneous)._
 ====
-
-WARNING: _FIXME: if multi-uop insts are handled as described above some cycles will be double-counted; e.g. one uop is incrementing issue latency while another is incremented execution latency._
 
 WARNING: _Some implementations may execute stores post-retirement.  This scheme does not capture the latency of that memory access.  That may be okay, since post-retire store accesses are off the critical path (don't hold up retire).  But they can occupy queue slots, cause stalls if queues fill, etc.  An altnernative would be to say that such stores are recorded until memory accesses complete?_
 
@@ -748,7 +746,7 @@ For both LCOFIs and LAMBIs associated with PDIS, software is advised to inhibit 
 [[membuff]]
 === Memory Buffer
 
-The PDIS memory buffer is an instance of the Asynchronous Memory Buffer, as defined by the Ssamb extension.  The PDIS memory buffer (PMB) must be implemented if `mpdisctl`.MEM is not hardcoded to 0. All optionality available within the Ssamb extension is available for the PMB.
+The PDIS memory buffer is an instance of the Asynchronous Memory Buffer, as defined by the Ssamb extension, see Ch 1 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  The PDIS memory buffer (PMB) must be implemented if `mpdisctl`.MEM is not hardcoded to 0. All optionality available within the Ssamb extension is available for the PMB.
 
 The PMB is configured using `spdisambcs`, `spdisambaddr`, `menvcfg`.PDISS, and `henvcfg`.PDISV.  See <<pdiscsr>> and the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification] for details.
 
@@ -779,4 +777,4 @@ NOTE: _The RISC-V Hart Performance Events spec includes events like INST.SPEC, w
 
 No bits within PDIS records are reserved for custom use.  Any record bits listed as WPRI may be used to hold custom fields, with the understanding that they may be reclaimed for standard fields by a future extension.
 
-A custom PDIS extension that alters standard PDIS behavior must be associated with a non-zero value within the designated custom bits in `__x__pdisctl`.  When the custom bits hold a non-zero value that enables a custom extension, the extension may alter standard PDIS behavior, which may include redefining standard record fields.
+A custom PDIS extension that alters standard PDIS behavior must be associated with a non-zero value within the designated custom bits in `mpdisctl`.  When the custom bits hold a non-zero value that enables a custom extension, the extension may alter standard PDIS behavior, which may include redefining standard record fields.
