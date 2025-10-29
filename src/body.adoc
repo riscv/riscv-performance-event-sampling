@@ -81,34 +81,34 @@ WARNING: _Should we say that software should default to using `shpmspc` as-is, i
 
 ==== Hardware Performance Monitor Sample Details  (`shpmsdetails`)
 
-Implementations may want to provide additional metadata for provided samples. A key use case to (partially) account for instruction-level parallelism when the core does not support Control Transfer Records (SSctr). Another reason for supporting this CSR is that it provides a standard interface for communicating the reason(s) why an instruction was sampled to profiling software through a specified software interface.
+The `shpmsdetails` CSRs provide an optional extension targeted at implementations that want to provide metadata in addition to `shpmspc` and `shpmsdata` for collected samples. A key use case to (partially) account for instruction-level parallelism when the core does not support Control Transfer Records (SSctr). Another reason for supporting this CSR is that it provides a standard interface for communicating the reason(s) why an instruction was sampled to profiling software through a specified software interface.
 
-WARNING: How do we know if an implementation supports shpmsdetails or not? I guess this can be provided as metadata somehow. --Magnus
+The sample details mechanism consists of two additional SXLEN-bit read/write WARL registers called `shpmsdetailsbtpcs` and `shpmsdetailsdata`. The `shpmsdetailsbtpcs` is used stores the PC of up to two branch target address if a at least one taken branch occurs among the instructions that the core retired in the cycle the sample was taken. The rationale for supporting up two branches is that cores with higher retire widths (e.g., 8) will typically implement SSctr.
 
-WARNING: I simply copied the below from 'shpmsdata', but I don't understand why it is a WARL register nor why software would want to write to it. (I do understand the writing part if we implement the counters, though, but that's currently not there) --Magnus
+NOTE: _The support for the `shpmsdetails` extension should be discoverable via the implementation's performance event JSON file._
 
-The sample details mechanism consists of two additional SXLEN-bit read/write WARL registers called 'shpmsdetailsbtpc' and 'shpmsdetailsdata'. The 'shpmsdetailsbtpc' is used stores the PC of up to one branch target address if a taken branch occurs among the instructions that the core retired in the cycle the sample was taken.
-
-.Sample Details Branch Target PC Register for SXLEN=64
+.Sample Details Branch Target PC Register for SXLEN=64  (`shpmsdetailsbt`)
 [%unbreakable]
 [wavedrom, , svg]
 ....
 {reg: [
-    {bits:  64, name: 'Sample Branch Target PC'},
-], config:{lanes: 1, hspace:1024}}
+    {bits:  64, name: 'Sample Branch Target PC 1'},
+    {bits:  64, name: 'Sample Branch Target PC 2'},
+], config:{lanes: 2, hspace:1024}}
 ....
 
-The 'shpmsdetailsdata' register provides the information needed to interpret the 'shpmsdetailsbt' register and additional sample metadata:
+The `shpmsdetailsdata` register provides the information needed to interpret the `shpmsdetailsbt` register and additional sample metadata:
 
 .Sample Details Data Register (`shpmsdetailsdata`)
 [wavedrom, , svg]
 ....
 {reg: [
-    {bits:  4, name: 'Instret'},
-    {bits:  4, name: 'TBN'},
-    {bits:  4, name: 'TBOF'},
-    {bits:  2, name: 'RS'},
-    {bits:  18, name: 'Reasons'},
+    {bits:  4, name: 'CCinit'},
+    {bits:  4, name: 'CTs'},
+    {bits:  4, name: 'CToffset1'},
+    {bits:  4, name: 'CToffset2'},
+    {bits:  2, name: 'RState'},
+    {bits:  14, name: 'Causes'},
     {bits:  32, name: 'WARL', type: 1},
 ], config:{lanes: 2, hspace:1024}}
 ....
@@ -118,23 +118,31 @@ The 'shpmsdetailsdata' register provides the information needed to interpret the
 |====
 | Field | Description
 | Instret | The number of instructions retired regardless of 16b or 32b. 
-| TBN | The number of deviations from sequential control flow (typically taken branches) that occured among the instructions that retired in the cycle the sample was taken. Breaks from control flow can include interrupts and exceptions.
-| TBOF | The offset at which the most important deviation from sequential control flow occured. If TBN > 0, this field notifies profiling software at which offset from the first instruction in the sample, which has offset 0, the branch target address in 'shpmsdetailsbt' occured.
-| RS | The state of the retire stage in the cycle the sample was taken. '00' signifies that the core committed at least one instruction, '01' means that it is stalled, '10' reports that retire is empty due to a pipeline flush, and '11' reports that retire is empty because it was not supplied with instructions.   
-| Reasons | Implementations can use this field to provide further information about the retire stage in the sample the cycle was taken, e.g., the (combinations of) performance event(s) the retiring instructions have been subjected to. 
+| CTs | The number of deviations from sequential control flow instructions (typically taken branches) that occured among the instructions that retired in the cycle the sample was taken. Breaks from control flow can include interrupts and exceptions.
+| CToffset1 | If CTs > 0, this field records offset from the oldest retiring sampled PC (which is stored in `shpmspc`) at which the first branch occured. The PC of the branch target will be available in the first field of `shpmsdetailsbtpcs`.
+| CToffset2 | If CTs > 1, this field records offset from the oldest retiring sampled PC (which is stored in `shpmspc`) at which the second branch occured. The PC of the branch target will be available in the second field of `shpmsdetailsbtpcs`.
+| RState | The state of the retire stage in the cycle the sample was taken. `00` signifies that the core committed at least one instruction, `01` means that it is stalled, `10` reports that retire is empty due to a pipeline flush, and `11` reports that retire is empty because it was not supplied with instructions.   
+| Causes | Implementations can use this field to provide further information about the retire stage in the sample the cycle was taken, e.g., the (combinations of) performance event(s) the retiring instructions have been subjected to. 
 |====
 
-WARNING: Missing pieces in the above table are 
-Cycle countdown: register holding countdown to 0 at which time a sample is taken. Needed when samples are streamed to trace; can use a prog perf counter counting cycles otherwise
-Cycle reload: starting countdown value when using cycle_countdown register/mode
-Randomize: # of LS bits to randomize cycle_countdown; can be 0 to perhaps 8 to 10
-Should this be another CSR? --Magnus
+Sampling software can estimate the addresses of the retiring instructions by assuming sequential execution starting from the PC in `shpmspc`. This will however be wrong when there are taken branches among the retiring instructions. The `CTs` field thus reports the number of taken branches among the retiring instructions. If `CTs`=0, sampling software knows that the sequential execution assumption holds. If `CTs`=1 (`CTs`=2), the instruction stream jumped to the first address in `shpmsdetailsbt` at the offset recorded in the `CToffset1` (`CToffset2`) field. If `CTs`>2, attribution will be biased since only two branch targets can be communicated. If this is a concern, implementors should consider supporting CTR because it can be used to identify all taken branches.
 
-Sampling software can estimate the addresses of the retiring instructions by assuming sequential execution starting from the PC in 'shpmspc'. This will however be wrong when there are taken branches among the retiring instructions. The 'TBN' field thus reports the number of taken branches among the retiring instructions. If 'TBN'=0, sampling software knows that the sequential execution assumption holds. If 'TBN'=1, the instruction stream jumped to the address in 'shpmsdetailsbt' at the offsett recorded in the 'TBOF' field. If 'TBN'>1, attribution will be biased since only one branch target can be communicated, and implementations should strive to select the branch target in 'shpmsdetailsbt' that minimizes bias. If the implmentation supports CTR, it can be used to identify all taken branches. 
+The purpose of the `RState` and `Causes` fields is to enable creating Per-Instruction Cycle Stacks (PICS). PICS break down the time attributed an instruction to explain its impact on overall execution time. One way to create PICS is to break down each instruction's contribiution to overall execution time according to state of the retire stage in each sample, and this use case is supported by the `RState` field. `RState` is a two bit field because there are four fundamental retire states, i.e., committing, stalling, drained, or flushed. Another option is to break down time according to the (combinations of) performance events the instruction was subjected to, which is supported by the `Causes` field. The tracked performance events will be implementation specific.
 
-WARNING: Is 18 bits sufficient for reasons? 4 instructions * 7 events = 28 bits is if you account for all combinations, but many combinations are rare. The reason for 18 specifically is that it leaves 32 WARL bits for future use, but not a strong argument. --Magnus
+NOTE: _Even if the meaning of the causes field is implementation specific, the software required for creating PICS can be reused across implementations. The reason is that creating PICS requires partioning samples according to the values of the `RState` or `Causes` fields, and this task is independent of the specific meaning of each value._
 
-WARNING: The point of the 'Reasons' field is to enable making per-instruction cycle stacks. I think we should explain this. --Magnus
+.Sample Details Cycle Counter (`shpmsdetailscc`)
+[%unbreakable]
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  32, name: 'Cycle counter init'}
+], config:{lanes: 1, hspace:1024}}
+....
+
+The `shpmsdetailscc` register enables streaming data to a memory buffer.
+
+WARNING: Bruce: Please input text here explaining why we need `shpmsdetailscc` 
 
 
 == Precise Local Counter Overflow Interrupt ISA Extension (Ssplcofi)
