@@ -17,9 +17,9 @@ NOTE: _In contrast to Sspesa, Smpdis/Sspdis (see <<smpdis>>) create profiles in 
 
 Performance profiles obtained through sampling are approximate for two reasons. The first is systematic error (or bias) which reduces profile accuracy by attributing a counter overflow to a different instruction than the one that caused it.  Sspesa aims to eliminate such inaccuracies for events that support precise attribution, and to minimize it for other events.  For example, upon overflow of a counter configured to count an L1 data cache miss event that supports precise attribution, an Sspesa implementation allows the PC of the instruction that caused the counter overflow to be discerned.
 
-Time-based profiles are more complicated because no specific instruction caused the cycle counter to overflow. A time-based profile is however most useful when each instruction is represented in the profile in proportion to its impact on overall execution time. To create a bias-free profile, the implementation must therefore attribute each sample to the instruction(s) for which the core is exposing execution time (i.e., retiring) in the cycle the counter overflows; this is known as time-proportional attribution. Systematic errors can hence be eliminated by adopting time-proportional attribution policies, but this may not always be practical (e.g., due to implementation overheads). For this reason, it is strongly recommended that Sspesa implementations minimize attribution bias when creating time-based profiles.
+Time-based profiles are different because no specific instruction causes the cycle counter to overflow; the cycle count instead randomly selects an instruction at retirement. A time-based profile is useful because each instruction is represented in the profile in proportion to its impact on overall execution time. To create a bias-free profile, the implementation must therefore attribute each sample to the instruction(s) for which the core is exposing execution time (i.e., retiring) in the cycle the counter overflows; this is known as time-proportional attribution. Systematic errors can hence be eliminated by adopting time-proportional attribution policies, however this may require additional overhead to implement. For this reason, it is strongly recommended that Sspesa implementations minimize attribution bias when creating time-based profiles.
 
-Statistical (or random) error is the second reason why all sample-based profiles are approximate. This is a byproduct of sampling events, rather than collecting attribution information for every event occurrence.  This source of imprecision can be mitigated by increasing the sample rate, though even sampling at 4kHz (the default for Linux perf) typically shows negligible error.
+Statistical (or random) error is the second reason why all sample-based profiles are approximate. This is a byproduct of sampling events since only a limited number of samples are collected rather than on every instruction.  This source of imprecision can be mitigated by increasing the sample rate, though even sampling at 4kHz (the default for Linux perf) typically shows negligible error.
 
 === CSRs
 
@@ -29,7 +29,7 @@ Statistical (or random) error is the second reason why all sample-based profiles
 
 NOTE: _The dependence on `__x__ip`.LCOFIP serves to ensure that only the first overflow leading to an LCOFI updates `shpmspc`.  If additional counters overflow before the LCOFI trap, the recorded sample PC is not overwritten.  This ensures that the sample PC is consistent with the point where CTR is frozen, if `__x__ctrctl`.LCOFIFRZ=1. The ID of the counter that caused the sample PC update is recorded in `shpmsdata`.CNTRID._
 
-.Sample PC Register for SXLEN=64
+.Sample PC Register for SXLEN=64 (`shpmspc`)
 [%unbreakable]
 [wavedrom, , svg]
 ....
@@ -58,7 +58,7 @@ NOTE: _As an example, for simultaneous overflow of `mhpmcounter5` and `mhpmcount
 
 The format of the remaining bits is implementation-defined, serving to provide any metadata necessary to derive the sample PC from `shpmspc` and any other relevant state.  For implementations where `shpmspc` captures the precise sample PC, or where no additional metadata is needed, the remaining `shpmsdata` bits may be hardwired to 0.
 
-.Sample Metadata Register for SXLEN=64
+.Sample Metadata Register for SXLEN=64 (`shpmsdata`)
 [%unbreakable]
 [wavedrom, , svg]
 ....
@@ -72,62 +72,81 @@ Access to `shpmsdata` matches that of `shpmspc` above, and `shpmsdata` captures 
 
 [NOTE]
 ====
+_Bits in the above WARL field may be subsequently defined as details are added to the spec, including bits defining core hardware resources needed for software decoding/interpreting Sspesa records._
+====
+
+[NOTE]
+====
 _In modern, superscalar implementations, the microarchitecture may be optimized such that the full PC of each retired instruction is not maintained throughout the pipeline.  The `shpmsdata` register provides a standard means by which such implementations can provide precise attribution, using a reference PC (`shpmspc`) and custom metadata that can be used by implementation-specific software algorithms to discern the appropriate sample PC._
 ====
 
-NOTE: _When creating time-based profiles, the value in `shpmspc` can be combined with implementation-specific metadata in `shpmsdata` and Control Transfer Records (Ssctr) to account for instruction parallelism by obtaining the addresses of all instructions that retired in the cycle the sample was taken. If Ssctr is not available, implementations should strive to avoid bias when selecting the value for `shpmspc`._
-
-WARNING: _Should we say that software should default to using `shpmspc` as-is, if it does not know of any custom algorithm for using `shpmsdata`?  Though that could result in the appearance of support for precise-attribution that in fact is not precise.  Perhaps if `shpmsdata` is not hardcoded to 0 and no custom algorithm is reported then software shouldn't report support for precise attribution?_
+NOTE: _When creating time-based profiles, the value in `shpmspc` can be combined with implementation-specific metadata in `shpmsdata` and Control Transfer Records (Ssctr) to account for instruction parallelism by obtaining the addresses of all instructions that retired in the cycle the sample was taken. If Ssctr is not available, additonal CSRs have been defined for control transfer target addresses to be recorded (details below)._
 
 ==== Hardware Performance Monitor Sample Details  (`shpmsdetails`)
 
-The `shpmsdetails` CSRs provide an optional extension targeted at implementations that want to provide metadata in addition to `shpmspc` and `shpmsdata` for collected samples. A key use case to (partially) account for instruction-level parallelism when the core does not support Control Transfer Records (SSctr). Another reason for supporting this CSR is that it provides a standard interface for communicating the reason(s) why an instruction was sampled to profiling software through a specified software interface.
+The `shpmsdetails<>` CSRs provide optional extensions targeted at implementations that want to provide metadata in addition to `shpmspc` and `shpmsdata` for a collected sample. The goal for these extensions is to attribute execution time to all instructions retired in the sampled cycle, for those cores that can retire more than one instruction per cycle.  The primary method is to record the PC of the first instruction then during post-acquisition decoding, assign (fractional) execution time to each instruction retired.  This assumes the instructions were sequentially executed.
 
-The sample details mechanism consists of two additional SXLEN-bit read/write WARL registers called `shpmsdetailsbtpcs` and `shpmsdetailsdata`. The `shpmsdetailsbtpcs` is used stores the PC of up to two branch target address if a at least one taken branch occurs among the instructions that the core retired in the cycle the sample was taken. The rationale for supporting up two branches is that cores with higher retire widths (e.g., 8) will typically implement SSctr.
+There are, however, cases where retirement can include one, possible more branches taken or other control transfers, e.g. interrupts or exceptions.  For these cases, the 'shpmsdetailsdata' CSR records how many CTs (control transfers) occurred in the retired cycle and their locations in the retired sequence. If the core implements the CTR (Control Transfer Records, Ssctr) trace hardware, then the last control transfer target entry or entries (in the trace) can be used to determine the destination of the transfer(s) so additional instructions can be decoded from the execution binary and assigned execution times.  If CTR is not included in the core then two additional CSRs ('shpmsdetailsbt1' and 'shpmsdetailsbt2') are defined in this specification to record them. 
 
-NOTE: _The support for the `shpmsdetails` extension should be discoverable via the implementation's performance event JSON file._
-
-.Sample Details Branch Target PC Register for SXLEN=64  (`shpmsdetailsbt`)
+.Sample Details Branch Target PC Register for SXLEN=64  (`shpmsdetailsbt1`)
 [%unbreakable]
 [wavedrom, , svg]
 ....
 {reg: [
     {bits:  64, name: 'Sample Branch Target PC 1'},
-    {bits:  64, name: 'Sample Branch Target PC 2'},
-], config:{lanes: 2, hspace:1024}}
+], config:{lanes: 1, hspace:1024}}
 ....
 
-The `shpmsdetailsdata` register provides the information needed to interpret the `shpmsdetailsbt` register and additional sample metadata:
+.Sample Details Branch Target PC Register for SXLEN=64  (`shpmsdetailsbt2`)
+[%unbreakable]
+[wavedrom, , svg]
+....
+{reg: [
+    {bits:  64, name: 'Sample Branch Target PC 2'},
+], config:{lanes: 1, hspace:1024}}
+....
+
+The sample details mechanism consists of additional SXLEN-bit read/write WARL registers called `shpmsdetailsbt1,2` and `shpmsdetailsdata`. The `shpmsdetailsbt1,2` stores the PCs of up to two branch target address if at least one taken branch occurs among the instructions that the core retired in the cycle the sample was taken. The rationale for supporting up two branches is that cores with higher retire widths (e.g., 8) will typically implement SSctr.
+
+NOTE: _The support for the `shpmsdetails` extension should be discoverable via the implementation's performance event JSON file._
+
+The `shpmsdetailsdata` register provides the information needed to interpret the `shpmsdetailsbt1,2` registers and additional sample metadata. Another reason for this and other CSRs is that they provide a standard interface for communicating the reason(s) why an instruction was sampled to profiling software through a specified software interface.
 
 .Sample Details Data Register (`shpmsdetailsdata`)
 [wavedrom, , svg]
 ....
 {reg: [
-    {bits:  4, name: 'CCinit'},
+    {bits:  4, name: 'Instret'},
     {bits:  4, name: 'CTs'},
     {bits:  4, name: 'CToffset1'},
     {bits:  4, name: 'CToffset2'},
     {bits:  2, name: 'RState'},
-    {bits:  14, name: 'Causes'},
-    {bits:  32, name: 'WARL', type: 1},
+    {bits:  14, name: 'WARL', type: 1},
+    {bits:  8, name: 'Cause0'},
+    {bits:  8, name: 'Cause1'},
+    {bits:  8, name: 'Cause2'},
+    {bits:  8, name: 'Cause3'},
 ], config:{lanes: 2, hspace:1024}}
 ....
-
 
 [cols="15%,85%",options="header"]
 |====
 | Field | Description
 | Instret | The number of instructions retired regardless of 16b or 32b. 
-| CTs | The number of deviations from sequential control flow instructions (typically taken branches) that occured among the instructions that retired in the cycle the sample was taken. Breaks from control flow can include interrupts and exceptions.
+| CTs | (CT=Control Transfer) The number of deviations from sequential control flow instructions (typically taken branches) that occured among the instructions that retired in the cycle the sample was taken. Breaks from control flow can include interrupts and exceptions.
 | CToffset1 | If CTs > 0, this field records offset from the oldest retiring sampled PC (which is stored in `shpmspc`) at which the first branch occured. The PC of the branch target will be available in the first field of `shpmsdetailsbtpcs`.
 | CToffset2 | If CTs > 1, this field records offset from the oldest retiring sampled PC (which is stored in `shpmspc`) at which the second branch occured. The PC of the branch target will be available in the second field of `shpmsdetailsbtpcs`.
 | RState | The state of the retire stage in the cycle the sample was taken. `00` signifies that the core committed at least one instruction, `01` means that it is stalled, `10` reports that retire is empty due to a pipeline flush, and `11` reports that retire is empty because it was not supplied with instructions.   
-| Causes | Implementations can use this field to provide further information about the retire stage in the sample the cycle was taken, e.g., the (combinations of) performance event(s) the retiring instructions have been subjected to. 
+| Cause0,1,2,3 | The implementation uses these fields to provide further information about the retire stage for I0, I1, I2, and I3 of multiple instructions retiring in the sampled cycle, e.g. the (combinations of) performance event(s) the retiring instructions have been subjected to. This spec recommends fixing the first set of Cause bits to be I$miss, ITLBmiss, Branch mispredict, D$miss, DTLBmiss
 |====
 
-Sampling software can estimate the addresses of the retiring instructions by assuming sequential execution starting from the PC in `shpmspc`. This will however be wrong when there are taken branches among the retiring instructions. The `CTs` field thus reports the number of taken branches among the retiring instructions. If `CTs`=0, sampling software knows that the sequential execution assumption holds. If `CTs`=1 (`CTs`=2), the instruction stream jumped to the first address in `shpmsdetailsbt` at the offset recorded in the `CToffset1` (`CToffset2`) field. If `CTs`>2, attribution will be biased since only two branch targets can be communicated. If this is a concern, implementors should consider supporting CTR because it can be used to identify all taken branches.
+As briefly described above, sampling software can calculate the addresses of the retiring instructions by assuming sequential execution starting from the PC in `shpmspc`. This however does not take into account that there may be taken branches or other control transfers among the retiring instructions. The `CTs` field thus reports the number of taken branches among the retiring instructions. If `CTs`=0, sampling software knows that the sequential execution assumption holds. If `CTs`=1 (`CTs`=2), the instruction stream jumped to the first address in `shpmsdetailsbt1` at the offset recorded in the `CToffset1` (`CToffset2`) field. If `CTs`>2, attribution will be biased since only two branch targets can be communicated. If this is a concern, implementors should consider supporting CTR because it can be used to identify all taken branches. 
+
+Alternatively, this sampling hardware is designed to handle a max of Control Transfers (CTs) per sample; any more CTs occur and sampling software stops assigning execution times to instructions following the second CT.  This could make the results slightly imprecise, however it is likely that > 2 CTs retiring in one cycles will occur infrequently.
 
 The purpose of the `RState` and `Causes` fields is to enable creating Per-Instruction Cycle Stacks (PICS). PICS break down the time attributed an instruction to explain its impact on overall execution time. One way to create PICS is to break down each instruction's contribiution to overall execution time according to state of the retire stage in each sample, and this use case is supported by the `RState` field. `RState` is a two bit field because there are four fundamental retire states, i.e., committing, stalling, drained, or flushed. Another option is to break down time according to the (combinations of) performance events the instruction was subjected to, which is supported by the `Causes` field. The tracked performance events will be implementation specific.
+
+For the non-committing sample states (stalling, draining, flushed), hardware may use the 'shpmspc' "Sample PC register" to point to the instruction that caused the appropriate state.
 
 NOTE: _Even if the meaning of the causes field is implementation specific, the software required for creating PICS can be reused across implementations. The reason is that creating PICS requires partioning samples according to the values of the `RState` or `Causes` fields, and this task is independent of the specific meaning of each value._
 
@@ -136,13 +155,23 @@ NOTE: _Even if the meaning of the causes field is implementation specific, the s
 [wavedrom, , svg]
 ....
 {reg: [
-    {bits:  32, name: 'Cycle counter init'}
+{bits:  1, name: 'AR'},
+{bits:  31, name: 'Cyclecounterinit'}
 ], config:{lanes: 1, hspace:1024}}
 ....
 
-The `shpmsdetailscc` register enables streaming data to a memory buffer.
+[cols="15%,85%",options="header"]
+|====
+| Field | Description 
+| AR | Sampling goes into Autorun mode when the AR bit is set to 1. Autorun is disabled when set to 0. 
+|====
 
-WARNING: Bruce: Please input text here explaining why we need `shpmsdetailscc` 
+
+The `shpmsdetailscc` register enables streaming data to a memory buffer. For example if the output of Sspesa is connected to a trace unit, the hardware will take a sample and send it to the trace unit to be formed into a message and output. The value in the upper bits of `shpmsdetailscc` are set into a count-up cycle counter. The counter runs and when it overflows, a sample is taken, streamed to the trace, and the count-up cycle counter is reloaded with the contents of this register and started counting again.
+
+This register could also be used to generate an overflow interrupt to flag software to read the CSR sample registers, thus not requiring a programmable performance counter to be dedicated for this use.
+
+NOTE: _It is recommended that hardware is implemented to prevent values to be put into the register that cause a period shorter than 2^6 to 2^8 cycle counts, otherwise the downstream hardware may not be able to handle the data rates._
 
 
 == Precise Local Counter Overflow Interrupt ISA Extension (Ssplcofi)
