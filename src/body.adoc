@@ -544,11 +544,11 @@ For load, store, and load & store instructions, the following sample data is col
     {bits:  1, name: 'ITMISS'},
     {bits:  1, name: 'ICMISS'},
     {bits:  1, name: 'ICITV'},
+    {bits:  1, name: 'L1TLBMISS'},
+    {bits:  1, name: 'LLTLBMISS'},
     {bits:  1, name: 'L1MISS'},
     {bits:  1, name: 'LLMISS'},
     {bits:  4, name: 'DSRC'},
-    {bits:  1, name: 'L1TLBMISS'},
-    {bits:  1, name: 'LLTLBMISS'},
     {bits: 10, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
@@ -622,7 +622,7 @@ For control transfer instructions, the control transfer type is optionally captu
 | Others | Defined in <<recevents>> above.
 |===
 
-All of the fields defined for control transfer instructions above are optional.
+The MISPRED bit is required, the control transfer type bits are optional but are either all implemented or none.  When the transfer type bits are implemented, exactly one of them will be set for all samples with pdishdrev.TYPE=4.
 
 NOTE: _As an example of using filtering to capture select combinations of control transfer types, to capture only transfers of type INDCALL, INDJMP, or INDLJMP, the mask and match filtering (see <<pdisevfilt>>) should be set to match 0s for all the excluded transfer type bits (DIRLJMP, RET, CORSWAP, DIRJMP, DIRCALL, TKBR, NTBR, and TRET), while leaving the bits for INDCALL, INDJMP, and INDLJMP unmasked._
 
@@ -697,8 +697,6 @@ If the record's FLUSHED bit is set, pdisadr1 optionally holds the PC of the inst
 If the instruction was not flushed and performs an explicit memory access, pdisadr1 is the data virtual address of the access.  See <<sampsel>> for how the data virtual address is chosen for multi-access instructions.
 
 If the instruction was not flushed and is an indirect control transfer, which implies that the type is one of INDCALL, INDJMP, INDLJMP, RET, or CORSWAP, pdisadr1 holds the target PC of the transfer.  If the instruction is not flushed and is a direct control transfer, an implementation may optionally capture the target PC as pdisadr1.
-
-WARNING: _Should pdisadr1/2 have valid bits, or is using 0 enough to indicate that no address is reported?_
 
 ==== PDIS Address2 (pdisadr2)
 
