@@ -704,7 +704,7 @@ If an additional address is captured for this sample, aside from the PC and pdis
 
 If the record's FLUSHED bit is set, and the sampled instruction performs an explicit memory access, pdisadr2 may hold the data virtual address of the access.
 
-NOTE: _The virtual address of the access may not be resolved by the time the instruction is flushed.  In such cases, pdisadr2 will hold 0._
+NOTE: _The virtual address of the access may not be resolved by the time the instruction is flushed.  In such cases, no pdisadr2 is captured._
 
 If the instruction was not flushed and the instruction is of type load, store, or load & store, then:
 
