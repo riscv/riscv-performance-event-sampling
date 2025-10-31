@@ -478,7 +478,8 @@ This section holds the record format, and event information for the sampled inst
     {bits:  1, name: 'FUSED'},
     {bits:  1, name: 'ITMISS'},
     {bits:  1, name: 'ICMISS'},
-    {bits: 19, name: 'WPRI', type: 1},
+    {bits:  1, name: 'ICITV'},
+    {bits: 18, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -505,26 +506,25 @@ This section holds the record format, and event information for the sampled inst
 | FLUSHED | When set, indicates that the sampled instruction did not retire, but instead was flushed due to an earlier mis-speculation.
 | FLUSH | When FLUSHED=1, this field provides the type of flush that cleared the sampled instruction.  The encoding values are as follows.
 
-0: Other
+0: FLUSH field is not implemented
 
 1: Branch misprediction
 
 2: Memory ordering violation
 
-3: _Reserved_
+3: Other
 | PARTIAL | When set, indicates that the selected instruction was only partially sampled, such that some elements of the instruction's execution may not be captured in the sample data.  See <<sampsel>> for more details.
 | FUSED | When set, indicates that the sampled instruction may have been fused with the instruction immediately preceding it, or immediately following it, such that artifacts of the adjacent, fused instruction may be visible in the sample data.  See <<sampsel>> for more details.
 | ITMISS | When set, indicates that the fetch request for the sampled instruction incurred an ITLB miss.  Only the first instruction to be executed from the fetch line, either at offset 0 or the target of a control transfer, will set ITMISS.
 | ICMISS | When set, indicates that the fetch request for the sampled instruction incurred an instruction cache miss.  Only the first instruction to be executed from the fetch line, either at offset 0 or the target of a control transfer, will set ICMISS.
+| ICITV | When set, the ITMISS and ICMISS fields are implemented.
 | SFMT | Record sub-format.  For PDIS v1.0, this value is 0.  Changes to the sub-format imply backwards-compatible changes to the record; e.g., adding a new field to previously WPRI bits.
 | FMT | Record format.  For PDIS v1.0, this value is 0.  Changes to the format are not backwards-compatible; e.g., legacy fields may be moved or redefined.
 |===
 
-The TYPE, FLUSHED, FMT, and SFMT fields are required, while other fields are optional.  Unimplemented fields should always report 0.
+The TYPE, FLUSHED, PARTIAL, FUSED, FMT, and SFMT fields are required, while other fields are optional.  For some implementations, PARTIAL and/or FUSED may always report 0.  Unimplemented fields should always report 0.
 
 Additional sample data fields are included in PDIS Header & Events when the type is load, store, load & store, or control transfer instruction.
-
-WARNING: _Do we need a discovery mechanism so software can know which optional fields are included?  When not implemented, they always report 0.  Could add a read-only CSR for this?  Or embed it in the record?_
 
 [[pdishdrldst]]
 ===== PDIS Header and Events for Load and Store Instructions
@@ -543,12 +543,13 @@ For load, store, and load & store instructions, the following sample data is col
     {bits:  1, name: 'FUSED'},
     {bits:  1, name: 'ITMISS'},
     {bits:  1, name: 'ICMISS'},
+    {bits:  1, name: 'ICITV'},
     {bits:  1, name: 'L1MISS'},
     {bits:  1, name: 'LLMISS'},
     {bits:  4, name: 'DSRC'},
     {bits:  1, name: 'L1TLBMISS'},
     {bits:  1, name: 'LLTLBMISS'},
-    {bits: 11, name: 'WPRI', type: 1},
+    {bits: 10, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -557,15 +558,15 @@ For load, store, and load & store instructions, the following sample data is col
 [cols="20%,80%",options="header"]
 |===
 | Field | Description
-| L1MISS | Data request missed the L1 cache.
-| LLMISS | Data request missed the last-level cache.  Optional.
-| DSRC | Data source.  Encodings for this field are implementation-defined.  Optional.
 | L1TLBMISS | Address translation missed the L1 TLB.
 | LLTLBMISS | Address translation missed the last-level TLB.
+| L1MISS | Data request missed the L1 cache.
+| LLMISS | Data request missed the last-level cache that can be tracked by the core, which may not be the last-level cache in the system.
+| DSRC | Data source.  Encodings for this field are implementation-defined, though 0 implies that DSRC is not implemented.
 | Others | Defined in <<recevents>> above.
 |===
 
-The L1MISS and L1TLBMISS fields are required, while others are optional.
+All fields are required save for DSRC.
 
 ===== PDIS Header and Events for Control Transfer Instructions
 
@@ -583,6 +584,7 @@ For control transfer instructions, the control transfer type is optionally captu
     {bits:  1, name: 'FUSED'},
     {bits:  1, name: 'ITMISS'},
     {bits:  1, name: 'ICMISS'},
+    {bits:  1, name: 'ICITV'},
     {bits:  1, name: 'TRET'},
     {bits:  1, name: 'NTBR'},
     {bits:  1, name: 'TKBR'},
@@ -596,7 +598,7 @@ For control transfer instructions, the control transfer type is optionally captu
     {bits:  1, name: 'INDLJMP'},
     {bits:  1, name: 'DIRLJMP'},
     {bits:  1, name: 'MISPRED'},
-    {bits:  5, name: 'WPRI', type: 1},
+    {bits:  4, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -688,7 +690,7 @@ The `time` value should be captured as closely as possible to the time the sampl
 
 ==== PDIS Address1 (pdisadr1)
 
-If at least one virtual address, aside from the PC, is captured for this sample, it is held in pdisadr1.  Capturing an address (aside from PC) is optional.  If no virtual address is captured for this sample, pdisadr1 is 0.
+If at least one virtual address, aside from the PC, is captured for this sample, it is held in pdisadr1.  Capturing an address (aside from PC) is optional; pdisadr1[63] is set to 1 when a virtual address is captured for this sample, and set to 0 when no address is captured or when pdisadr1 is not implemented.
 
 If the record's FLUSHED bit is set, pdisadr1 optionally holds the PC of the instruction that caused the flush.  For a mispredict flush, pdisadr1 the PC of the branch or jump that mispredicted.  For a memory ordering violation flush, pdisadr1 is the PC of the load that incurred the violation.  For other flush sources, the value is implementation-defined.
 
@@ -700,7 +702,7 @@ WARNING: _Should pdisadr1/2 have valid bits, or is using 0 enough to indicate th
 
 ==== PDIS Address2 (pdisadr2)
 
-If an additional address is captured for this sample, aside from the PC and pdisadr1, it is held in pdisadr2.  Capturing a second address (aside from PC) is optional.  If no additional address is captured for this sample, pdisadr2 is 0.
+If an additional address is captured for this sample, aside from the PC and pdisadr1, it is held in pdisadr2.  Capturing a second address (aside from PC) is optional; pdisadr2[63] is set to 1 when a second address is captured for this sample, and set to 0 when no second address is captured or when pdisadr2 is not implemented.
 
 If the record's FLUSHED bit is set, and the sampled instruction performs an explicit memory access, pdisadr2 may hold the data virtual address of the access.
 
