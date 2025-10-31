@@ -85,8 +85,6 @@ The Ssplcofi extension guarantees that, for Zihpm counters programmed to count p
 
 Ssplcofi requries support for Sspesa, which provides a reliable means to discern the sample PC.  Because the causal instruction may be a jump or taken branch, the sample PC cannot be reliably discerned from the epc value.
 
-WARNING: _Should we make any promises or recommendations for events that do not support precise attribution?  E.g., cycles?_
-
 [[smpdis]]
 == Precise Decoded Instruction Sampling (Smpdis/Sspdis)
 
