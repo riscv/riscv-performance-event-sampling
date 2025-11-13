@@ -121,8 +121,8 @@ The `shpmsdetailsdata` register provides the information needed to interpret the
     {bits:  4, name: 'CTs'},
     {bits:  4, name: 'CTOFFSET1'},
     {bits:  4, name: 'CTOFFSET2'},
-    {bits:  6, name: 'WARL', type: 1},
-    {bits:  8, name: 'CAUSE'},
+    {bits:  4, name: 'CAUSEOFFSET'},
+    {bits:  10, name: 'CAUSE'},
     {bits: 32, name: 'WARL', type: 1},
 ], config:{lanes: 2, hspace:1024}}
 ....
@@ -132,22 +132,25 @@ The `shpmsdetailsdata` register provides the information needed to interpret the
 | Field | Description
 | Instret | The number of instructions retired regardless of 16b or 32b. 
 | RSTATE | The state of the *Retire* stage in the cycle the sample is taken. +
- `00` signifies that the core committed at least one instruction +
- `01` means that no instructions retired because the pipeline is stalled +
- `10` reports that retire is empty due to a pipeline flush +
+ `00` signifies that the core retired at least one instruction. +
+ `01` means that no instructions retired because the pipeline is stalled. +
+ `10` reports that retire is empty due to a pipeline flush. +
  `11` reports that retire is empty because it was not supplied with instructions.  
 | CTs | (CT=Control Transfer) The number of deviations from sequential control flow instructions (typically taken branches) that occurred among the sequence of instructions that retired in the cycle the sample was taken. Breaks from sequential flow can include interrupts and exceptions.
 | CTOFFSET1 | If CTs > 0, this field records the offset from the first (oldest) retired instruction, pointed to by the sampled PC, stored in `shpmspc`, at which the first branch occurred. The PC of the branch target is in `shpmsdetailsbt1` and this is used by recording software to assign sample information to that instruction. For example, CTOFFSET1 equals 1 when a control transfer (a non-sequential execution address) occurred between the first and second retired instruction.
 | CTOFFSET2 | If CTs > 1, `CTOFFSET2` holds the instruction count offset from the first retired instruction at which the second control transfer occurred. The PC of the branch target for this instruction is saved in `shpmsdetailsbt2`.
-| WARL| Bits for future expansion
-| CAUSE| This field provides further information about the cause of the retire stage being empty, e.g., the (combinations of) performance event(s) that caused no instructions to retire. This specification recommends fixing the first set of CAUSE bits to be I$miss, ITLBmiss, Branch mispredict, D$miss, DTLBmiss.
+| CAUSEOFFSET | This field reports which of the retired instructions the `CAUSE` field applies to and is off-by-one encoded, i.e., that the value 1 refers to the first retired instruction, 2 refers to the second retired instruction, etc. The value 0 reports that no cause information is provided.   
+| CAUSE | This field provides further information about the cause(s) for why an instruction blocked retire, e.g., the (combinations of) performance event(s) that a blocking instruction was subjected to. This specification recommends fixing the first set of CAUSE bits to be I$miss, ITLBmiss, Branch mispredict, D$miss, DTLBmiss.
+| WARL| Bits for future expansion.
 |====
 
 As briefly described previously, sampling software can calculate the addresses of the retiring instructions by assuming sequential execution starting from the PC in `shpmspc`. This however does not take into account that there may be taken branches or other control transfers among the retiring instructions. The `CTs` field thus reports the number of taken branches among the retiring instructions. If `CTs`= 0, sampling software knows that all the retired instructions executed sequentially. If `CTs`= 1, the instruction stream jumped to the address in `shpmsdetailsbt1` at the instruction count recorded in the `CTOFFSET1`  field. If `CTs`= 2, `CTOFFSET2` holds the instruction count of where a second branch (or control transfer) occurred, and `shpmsdetailsbt2` in the target address for decoding starting at that address. If `CTs` > 2, attribution will have some bias since only two branch targets can be communicated, as defined by this specification. If this is a concern, implementors should consider implementing CTR (Control Transfer Records) hardware since it can be used to identify all control transfers.
 
-The purpose of the `RSTATE` and `CAUSE` fields is to enable creating Per-Instruction Cycle Stacks (PICS). PICS break down the time attributed to each sampled instruction to record and subsequently report its impact on overall execution time. This is done by breaking down each instruction's contribution to overall execution time according to the state of the retire stage in each sample, as recorded in the `RSTATE` field. `RSTATE` is a two bit field because there are four fundamental retire states, i.e., committing, stalling, drained, or flushed. Additional information for reporting the cause of instructions that slow down "ideal" execution are the performance events the instruction was subjected to, stored in the `CAUSE` field. The first set of bits are the most common types and fixed; remaining bits are implementation specific.
+The purpose of the `RSTATE` and `CAUSE` fields is to enable creating Per-Instruction Cycle Stacks (PICS). PICS break down the time attributed to each sampled instruction to record and subsequently report its impact on overall execution time. This is done by breaking down each instruction's contribution to overall execution time according to the state of the retire stage in each sample, as recorded in the `RSTATE` field. `RSTATE` is a two bit field because there are four fundamental retire states, i.e., retiring, stalling, drained, or flushed. Additional information for reporting the cause of instructions that slow down "ideal" execution are the performance events the instruction was subjected to, stored in the `CAUSE` field. The first set of bits are the most common types and fixed; remaining bits are implementation specific.
 
-For the non-committing sample states (stalling, draining, flushed), hardware will use the 'shpmspc' "Sample PC register" to point to the instruction that caused the appropriate state.
+If the core is unable to reach its ideal retire bandwidth in the cycle the sample is taken, implementations should blame the loss of retire bandwidth on a single instruction because instructions retire in program order. The typical case is that the oldest instruction is to blame, e.g., a long-latency load stalled at the head of the ROB, but a younger instruction can also block retirement. The latter case typically occurs in the cycles where the core transitions between the retiring state and non-retiring states (stalling, drained, flushed). For example, consider a cycle in which a four-wide core retires its two oldest instructions but that a long-latency load blocks further retirement. In this case, implementations should report `CAUSES` for the long-latency load, and this is enabled through the `CAUSEOFFSET` field. `CAUSEOFFSET` = 0 encodes that the `CAUSES` field is invalid or not implemented, and `CAUSEOFFSET` = 1 therefore points to the oldest retiring instruction, `CAUSEOFFSET` = 2 to the second oldest instruction, etc.  
+
+For the non-retiring sample states, hardware will use the 'shpmspc' "Sample PC register" to point to the instruction that caused the appropriate state.
 
 NOTE: _Even if the meaning of some of the bits in the causes field is implementation specific, the software required for creating PICS can be reused across implementations. The reason is that creating PICS requires partioning samples according to the values of the `RSTATE` or `Causes` fields, and this task is independent of the specific meaning of each value._
 
