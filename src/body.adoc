@@ -86,7 +86,7 @@ NOTE: _When creating time-based profiles, the value in `shpmspc` can be combined
 
 The `shpmsdetails` CSRs provide optional extensions targeted at implementations that want to provide metadata in addition to `shpmspc` and `shpmsdata` for a collected sample. The goal for these extensions is to attribute execution time to all instructions retired in the sampled cycle, for those cores that can retire more than one instruction per cycle.  The primary method is to record the PC of the first instruction then during post-acquisition decoding, assign (fractional) execution time to each instruction retired.  This assumes the instructions were sequentially executed.
 
-There are, however, cases where retirement can include one, possible more branches taken or other control transfers, e.g., interrupts or exceptions.  For these cases, the `shpmsdetailsdata` CSR records how many CTs (control transfers) occurred in the retired cycle and their locations in the retired sequence. If the core implements the CTR (Control Transfer Records, Ssctr) trace hardware, then the last control transfer target entry or entries (in the trace) can be used to determine the destination of the transfer(s) so additional instructions can be decoded from the execution binary and assigned execution times.  If CTR is not included in the core then two additional CSRs (`shpmsdetailsbt1` and `shpmsdetailsbt2`) are defined in this specification to record them. 
+There are, however, cases where retirement can include one, possible more branches taken or other control transfers, e.g., interrupts or exceptions.  For these cases, the `shpmsdetailsdata` CSR records how many CTs (control transfers) occurred in the retired cycle and their locations in the retired sequence. If the core implements the CTR (Control Transfer Records, Ssctr) trace hardware, then the last control transfer target entry or entries (in the trace) can be used to determine the destination of the transfer(s) so additional instructions can be decoded from the execution binary and assigned execution times.  If CTR is not included in the core then two additional CSRs (`shpmsdetailsbt1` and `shpmsdetailsbt2`) are defined in this specification to record them.
 
 .Sample Details Branch Target PC Register for SXLEN=64  (`shpmsdetailsbt1`)
 [%unbreakable]
@@ -130,16 +130,16 @@ The `shpmsdetailsdata` register provides the information needed to interpret the
 [cols="15%,85%",options="header"]
 |====
 | Field | Description
-| Instret | The number of instructions retired regardless of 16b or 32b. 
+| Instret | The number of instructions retired regardless of 16b or 32b.
 | RSTATE | The state of the *Retire* stage in the cycle the sample is taken. +
  `00` signifies that the core retired at least one instruction. +
  `01` means that no instructions retired because the pipeline is stalled. +
  `10` reports that retire is empty due to a pipeline flush. +
- `11` reports that retire is empty because it was not supplied with instructions.  
+ `11` reports that retire is empty because it was not supplied with instructions.
 | CTs | (CT=Control Transfer) The number of deviations from sequential control flow instructions (typically taken branches) that occurred among the sequence of instructions that retired in the cycle the sample was taken. Breaks from sequential flow can include interrupts and exceptions.
 | CTOFFSET1 | If CTs > 0, this field records the offset from the first (oldest) retired instruction, pointed to by the sampled PC, stored in `shpmspc`, at which the first branch occurred. The PC of the branch target is in `shpmsdetailsbt1` and this is used by recording software to assign sample information to that instruction. For example, CTOFFSET1 equals 1 when a control transfer (a non-sequential execution address) occurred between the first and second retired instruction.
 | CTOFFSET2 | If CTs > 1, `CTOFFSET2` holds the instruction count offset from the first retired instruction at which the second control transfer occurred. The PC of the branch target for this instruction is saved in `shpmsdetailsbt2`.
-| CAUSEOFFSET | This field reports which of the retired instructions the `CAUSE` field applies to and is off-by-one encoded, i.e., that the value 1 refers to the first retired instruction, 2 refers to the second retired instruction, etc. The value 0 reports that no cause information is provided.   
+| CAUSEOFFSET | This field reports which of the retired instructions the `CAUSE` field applies to and is off-by-one encoded, i.e., that the value 1 refers to the first retired instruction, 2 refers to the second retired instruction, etc. The value 0 reports that no cause information is provided.
 | CAUSE | This field provides further information about the cause(s) for why an instruction blocked retire, e.g., the (combinations of) performance event(s) that a blocking instruction was subjected to. This specification recommends fixing the first set of CAUSE bits to be I$miss, ITLBmiss, Branch mispredict, D$miss, DTLBmiss.
 | WARL| Bits for future expansion.
 |====
@@ -148,7 +148,7 @@ As briefly described previously, sampling software can calculate the addresses o
 
 The purpose of the `RSTATE` and `CAUSE` fields is to enable creating Per-Instruction Cycle Stacks (PICS). PICS break down the time attributed to each sampled instruction to record and subsequently report its impact on overall execution time. This is done by breaking down each instruction's contribution to overall execution time according to the state of the retire stage in each sample, as recorded in the `RSTATE` field. `RSTATE` is a two bit field because there are four fundamental retire states, i.e., retiring, stalling, drained, or flushed. Additional information for reporting the cause of instructions that slow down "ideal" execution are the performance events the instruction was subjected to, stored in the `CAUSE` field. The first set of bits are the most common types and fixed; remaining bits are implementation specific.
 
-If the core is unable to reach its ideal retire bandwidth in the cycle the sample is taken, implementations should blame the loss of retire bandwidth on a single instruction because instructions retire in program order. The typical case is that the oldest instruction is to blame, e.g., a long-latency load stalled at the head of the ROB, but a younger instruction can also block retirement. The latter case typically occurs in the cycles where the core transitions between the retiring state and non-retiring states (stalling, drained, flushed). For example, consider a cycle in which a four-wide core retires its two oldest instructions but that a long-latency load blocks further retirement. In this case, implementations should report `CAUSES` for the long-latency load, and this is enabled through the `CAUSEOFFSET` field. `CAUSEOFFSET` = 0 encodes that the `CAUSES` field is invalid or not implemented, and `CAUSEOFFSET` = 1 therefore points to the oldest retiring instruction, `CAUSEOFFSET` = 2 to the second oldest instruction, etc.  
+If the core is unable to reach its ideal retire bandwidth in the cycle the sample is taken, implementations should blame the loss of retire bandwidth on a single instruction because instructions retire in program order. The typical case is that the oldest instruction is to blame, e.g., a long-latency load stalled at the head of the ROB, but a younger instruction can also block retirement. The latter case typically occurs in the cycles where the core transitions between the retiring state and non-retiring states (stalling, drained, flushed). For example, consider a cycle in which a four-wide core retires its two oldest instructions but that a long-latency load blocks further retirement. In this case, implementations should report `CAUSES` for the long-latency load, and this is enabled through the `CAUSEOFFSET` field. `CAUSEOFFSET` = 0 encodes that the `CAUSES` field is invalid or not implemented, and `CAUSEOFFSET` = 1 therefore points to the oldest retiring instruction, `CAUSEOFFSET` = 2 to the second oldest instruction, etc.
 
 For the non-retiring sample states, hardware will use the 'shpmspc' "Sample PC register" to point to the instruction that caused the appropriate state.
 
@@ -166,7 +166,7 @@ NOTE: _Even if the meaning of some of the bits in the causes field is implementa
 
 [cols="20%,80%",options="header"]
 |====
-| Field | Description 
+| Field | Description
 |SAMPLEINITVALUE | Initial value that hardware loads into the count-up cycle counter after an overflow. When the counter reaches all ones, the next clock cycle causes a sample trigger and the count-up counter is reloaded with the initial value and counting begins again. Note that hardware implementations have the discretion to use fewer than 31 bits for the counter; the number defines the largest duration.  (A 24 bit SAMPLEINITVALUE overflows at ~.0167 seconds for a 1GHz clock).
 | AR | Sampling goes into AutoRun mode when the AR bit is set to 1 and sampling has started.  This is primarily for sampling that streams records to a Trace Unit. AutoRun is disabled when set to 0 and samples are read by an interrupt handler.
 |====
