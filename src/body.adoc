@@ -271,6 +271,8 @@ These registers are populated only when a sampled instruction is a qualified sam
 
 If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds 0x60 or 0x61.
 
+PDIS Sample Data registers are implemented only if `mpdisctl`.MEM is not hardcoded to 1.
+
 WARNING: _0x60 and 0x61 are proposed `*iselect` index values._
 
 ==== Supervisor PDIS Event Filter Mask Register (`spdisevmask`)
@@ -338,7 +340,7 @@ The `spdisfilter` register is a WARL register that allows the user to filter rec
 See <<pdislat>> for details on the latency values.
 |===
 
-If latency filtering is not supported, `spdisfilter` should be read-only 0.  Otherwise, THRESH and INV must remain writable.  LATSEL may optionally be hardwired to 0, implying that only filtering by "Total latency" is supported.
+If latency filtering is not supported, `spdisfilter` must be read-only 0.  Otherwise, THRESH and INV must remain writable.  LATSEL may optionally be hardcoded to 0, implying that only filtering by "Total latency" is supported.
 
 ==== Supervisor PDIS AMB Control and Status (`spdisambcs`)
 
