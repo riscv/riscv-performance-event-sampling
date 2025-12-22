@@ -470,6 +470,8 @@ This section holds the record format, and event information for the sampled inst
 {reg: [
     {bits:  3, name: 'TYPE'},
     {bits: 29, name: 'HPM[31:3]'},
+    {bits:  1, name: 'ADR1V'},
+    {bits:  1, name: 'ADR2V'},
     {bits:  1, name: 'FLUSHED'},
     {bits:  2, name: 'FLUSH'},
     {bits:  1, name: 'PARTIAL'},
@@ -477,7 +479,7 @@ This section holds the record format, and event information for the sampled inst
     {bits:  1, name: 'ITMISS'},
     {bits:  1, name: 'ICMISS'},
     {bits:  1, name: 'ICITV'},
-    {bits: 18, name: 'WPRI', type: 1},
+    {bits: 16, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -501,6 +503,8 @@ This section holds the record format, and event information for the sampled inst
 5..7: _Reserved_
 
 | HPM__i__ | When `mpdisctl`.HPM__i__=1 and other criteria are met (see <<pdisctl>>), set if the sampled instruction incurred the event selected in `mhpmevent__i__`.
+| ADR1V | When set, indicates that a valid address was captured in pdisadr1.  See <<pdisadr1>>.
+| ADR2V | When set, indicates that a valid address was captured in pdisadr2.  See <<pdisadr2>>.
 | FLUSHED | When set, indicates that the sampled instruction did not retire, but instead was flushed due to an earlier mis-speculation.
 | FLUSH | When FLUSHED=1, this field provides the type of flush that cleared the sampled instruction.  The encoding values are as follows.
 
@@ -535,6 +539,8 @@ For load, store, and load & store instructions, the following sample data is col
 {reg: [
     {bits:  3, name: 'TYPE=1,2,3'},
     {bits: 29, name: 'HPM[31:3]'},
+    {bits:  1, name: 'ADR1V'},
+    {bits:  1, name: 'ADR2V'},
     {bits:  1, name: 'FLUSHED'},
     {bits:  2, name: 'FLUSH'},
     {bits:  1, name: 'PARTIAL'},
@@ -547,7 +553,7 @@ For load, store, and load & store instructions, the following sample data is col
     {bits:  1, name: 'L1MISS'},
     {bits:  1, name: 'LLMISS'},
     {bits:  4, name: 'DSRC'},
-    {bits: 10, name: 'WPRI', type: 1},
+    {bits:  8, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -576,6 +582,8 @@ For control transfer instructions, the control transfer type is optionally captu
 {reg: [
     {bits:  3, name: 'TYPE=4'},
     {bits: 29, name: 'HPM[31:3]'},
+    {bits:  1, name: 'ADR1V'},
+    {bits:  1, name: 'ADR2V'},
     {bits:  1, name: 'FLUSHED'},
     {bits:  2, name: 'FLUSH'},
     {bits:  1, name: 'PARTIAL'},
@@ -596,7 +604,7 @@ For control transfer instructions, the control transfer type is optionally captu
     {bits:  1, name: 'INDLJMP'},
     {bits:  1, name: 'DIRLJMP'},
     {bits:  1, name: 'MISPRED'},
-    {bits:  4, name: 'WPRI', type: 1},
+    {bits:  2, name: 'WPRI', type: 1},
     {bits:  3, name: 'SFMT'},
     {bits:  3, name: 'FMT'},
 ], config:{lanes: 8, hspace:1024}}
@@ -686,9 +694,10 @@ NOTE: _To illustrate this scheme, if PDIS is delegated to S-mode (`mstateen0`.PD
 
 The `time` value should be captured as closely as possible to the time the sampled instruction retires, traps, or is flushed.
 
+[[pdisadr1]]
 ==== PDIS Address1 (pdisadr1)
 
-If at least one virtual address, aside from the PC, is captured for this sample, it is held in pdisadr1.  Capturing an address (aside from PC) is optional; pdisadr1[63] is set to 1 when a virtual address is captured for this sample, and set to 0 when no address is captured or when pdisadr1 is not implemented.
+If at least one virtual address, aside from the PC, is captured for this sample, it is held in pdisadr1.  Capturing an address (aside from PC) is optional; `mpdisctl`.ADR1V is set to 1 when a virtual address is captured for this sample, and set to 0 when no address is captured or when pdisadr1 is not implemented.
 
 If the record's FLUSHED bit is set, pdisadr1 optionally holds the PC of the instruction that caused the flush.  For a mispredict flush, pdisadr1 the PC of the branch or jump that mispredicted.  For a memory ordering violation flush, pdisadr1 is the PC of the load that incurred the violation.  For other flush sources, the value is implementation-defined.
 
@@ -696,9 +705,10 @@ If the instruction was not flushed and performs an explicit memory access, pdisa
 
 If the instruction was not flushed and is an indirect control transfer, which implies that the type is one of INDCALL, INDJMP, INDLJMP, RET, or CORSWAP, pdisadr1 holds the target PC of the transfer.  If the instruction is not flushed and is a direct control transfer, an implementation may optionally capture the target PC as pdisadr1.
 
+[[pdisadr2]]
 ==== PDIS Address2 (pdisadr2)
 
-If an additional address is captured for this sample, aside from the PC and pdisadr1, it is held in pdisadr2.  Capturing a second address (aside from PC) is optional; pdisadr2[63] is set to 1 when a second address is captured for this sample, and set to 0 when no second address is captured or when pdisadr2 is not implemented.
+If an additional address is captured for this sample, aside from the PC and pdisadr1, it is held in pdisadr2.  Capturing a second address (aside from PC) is optional; `mpdisctl`.ADR2V is set to 1 when a second address is captured for this sample, and set to 0 when no second address is captured or when pdisadr2 is not implemented.
 
 If the record's FLUSHED bit is set, and the sampled instruction performs an explicit memory access, pdisadr2 may hold the data virtual address of the access.
 
@@ -706,8 +716,13 @@ NOTE: _The virtual address of the access may not be resolved by the time the ins
 
 If the instruction was not flushed and the instruction is of type load, store, or load & store, then:
 
-* if the sampled instruction executed in VS-mode or VU-mode and `vspdisctl`.PA=1, pdisadr2 holds the data guest physical address to which the virtual address in pdisadr1 is mapped;
-* otherwise, if `mpdisctl`.PA=1, pdisadr2 holds the data physical address to which the virtual address in pdisadr1 is mapped.
+* if the sampled instruction executed in VS-mode or VU-mode and `vspdisctl`.PA=1, pdisadr2 holds the data guest physical address, shifted right by 2, to which the virtual address in pdisadr1 is mapped;
+* otherwise, if `mpdisctl`.PA=1, pdisadr2 holds the data physical address, shifted right by 2, to which the virtual address in pdisadr1 is mapped.
+
+[NOTE]
+====
+_A physical address or guest physical address written to pdisadr2 is shifted right by 2 bits to accommodate addresses wider than the current XLEN. The Sv32 page-based virtual-memory scheme described in Section 12.3 supports 34-bit physical addresses for RV32, so pdisadr2 must support addresses wider than XLEN for RV32. This shift-by-2 encoding of physical and guest physical addresses matches the encoding of physical addresses in PMP address registers (Section 3.7) and in page table entries (Section 12.3, Section 12.4, Section 12.5, and Section 12.6).  If the least-significant two bits are needed, these bits are the same as the least-significant two bits of the virtual address in pdisadr1._
+====
 
 If the instruction was not flushed, the instruction is of type control transfer, and `mpdisctl`.EPT=1, pdisadr2 holds the target of the prior control transfer instruction.
 
