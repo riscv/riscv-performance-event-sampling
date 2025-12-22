@@ -719,10 +719,7 @@ If the instruction was not flushed and the instruction is of type load, store, o
 * if the sampled instruction executed in VS-mode or VU-mode and `vspdisctl`.PA=1, pdisadr2 holds the data guest physical address, shifted right by 2, to which the virtual address in pdisadr1 is mapped;
 * otherwise, if `mpdisctl`.PA=1, pdisadr2 holds the data physical address, shifted right by 2, to which the virtual address in pdisadr1 is mapped.
 
-[NOTE]
-====
-_A physical address or guest physical address written to pdisadr2 is shifted right by 2 bits to accommodate addresses wider than the current XLEN. The Sv32 page-based virtual-memory scheme described in Section 12.3 supports 34-bit physical addresses for RV32, so pdisadr2 must support addresses wider than XLEN for RV32. This shift-by-2 encoding of physical and guest physical addresses matches the encoding of physical addresses in PMP address registers (Section 3.7) and in page table entries (Section 12.3, Section 12.4, Section 12.5, and Section 12.6).  If the least-significant two bits are needed, these bits are the same as the least-significant two bits of the virtual address in pdisadr1._
-====
+NOTE: _A physical address or guest physical address written to pdisadr2 is shifted right by 2 bits to accommodate addresses wider than the current XLEN. The Sv32 page-based virtual-memory scheme described in Section 12.3 supports 34-bit physical addresses for RV32, so pdisadr2 must support addresses wider than XLEN for RV32. This shift-by-2 encoding of physical and guest physical addresses matches the encoding of physical addresses in PMP address registers (Section 3.7) and in page table entries (Section 12.3, Section 12.4, Section 12.5, and Section 12.6).  If the least-significant two bits are needed, these bits are the same as the least-significant two bits of the virtual address in pdisadr1._
 
 If the instruction was not flushed, the instruction is of type control transfer, and `mpdisctl`.EPT=1, pdisadr2 holds the target of the prior control transfer instruction.
 
