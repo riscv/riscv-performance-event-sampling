@@ -142,7 +142,7 @@ The `mpdisctl` register is a 64-bit WARL register that configures the PDIS mecha
 5..7: _Reserved_
 
 | HPM[31:3] | Each HPM__i__ bit enables recording of whether the sampled instruction incurred the event selected in `mhpmevent__i__`.  Recording of events for HPM__i__ requires that counter __i__ is delegated to the same privilege mode as PDIS, that the selected event supports PDIS recording, and that the counter is enabled in the privilege mode in which the sampled instruction executes.
-| MEM | Read-only bit that, when set, indicates that sample records (<<samprec>>) are written to the PDIS Memory Buffer (<<membuff>>).  When 0, sample records are instead written to `spdisdata__i__` registers (<<dataregs>>).
+| MEM | Read-only bit that, when set, indicates that sample records (<<samprec>>) are written to the PDIS Memory Buffer (<<membuff>>).  When 0, sample records are written to `spdisdata__i__` registers (<<dataregs>>).
 | ACC | Accelerate instruction selection after a sample is filtered out or otherwise discarded.  See <<sampsel>>.
 | TS | Enable recording of a timestamp per record.  See <<samprec>>.
 | PA | Enable recording the physical address of sampled explicit memory operations.  See <<samprec>>.
@@ -748,17 +748,6 @@ Samples can be discarded if a selected latency value does not exceed a chosen th
 
 NOTE: _When selecting a latency value for filtering that counts until the sampled instruction retires (i.e., Total latency or Oldest latency), the latency value used in the comparison may be smaller than the value reported in the record.  This is because a precise LCOFI may require some setup time in order to avoid skid, and hence the comparison may occur some fixed number of cycles before retirement._
 
-[[sampmodes]]
-=== Sampling Modes
-
-PDIS supports collecting each sample record individually as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
-
-To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  The handler can then collect the record, from the PDIS Memory Buffer (<<membuff>>) if `mpdisctl`.MEM=1 or from PDIS Sample Data Registers (<<dataregs>>) if `mpdisctl`.MEM=0, along with any other state desired.  It must then clear the PDIS OF flag before resuming workload execution.
-
-Batch mode is available only if `mpdisctl`.MEM=1.  To enable batch mode, PDIS is configured with `mpdisctl`.OF=1 and `spdisambcs`.BMIEN=1.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `spdisambcs`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `spdisambcs`.BMI=1.  The LAMBI handler can then collect the records, adjust any other PDIS state if desired, and clear BMI before resuming workload execution.
-
-For both LCOFIs and LAMBIs associated with PDIS, software is advised to inhibit the PDIS counter (`__x__countinhibit`[1]=1) during handler execution.  This avoids counting or sampling handler instructions, and avoids risk of the PDIS sample data registers being modified as the record is being collected.
-
 [[membuff]]
 === Memory Buffer
 
@@ -794,3 +783,37 @@ NOTE: _The RISC-V Hart Performance Events spec includes events like INST.SPEC, w
 No bits within PDIS records are reserved for custom use.  Any record bits listed as WPRI may be used to hold custom fields, with the understanding that they may be reclaimed for standard fields by a future extension.
 
 A custom PDIS extension that alters standard PDIS behavior must be associated with a non-zero value within the designated custom bits in `mpdisctl`.  When the custom bits hold a non-zero value that enables a custom extension, the extension may alter standard PDIS behavior, which may include redefining standard record fields.
+
+[appendix]
+[[sampmodes]]
+=== Sampling Modes and Record Collection
+
+PDIS supports collecting each sample record individually as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
+
+To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  
+
+Batch mode is available only if `mpdisctl`.MEM=1.  To enable batch mode, PDIS is configured with `mpdisctl`.OF=1 and `spdisambcs`.BMIEN=1.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `spdisambcs`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `spdisambcs`.BMI=1.  The LAMBI handler can then collect the records.
+
+==== LCOFI Record Collection
+
+The LCOFI handler, running in privilege mode _x_, should follow the guidance below when used for collecting PDIS records.
+
+. Inhibit the PDIS counter by setting `__x__countinhibit[1]`=1.
+** This avoids counting or sampling handler instructions, and avoids risk of the PDIS sample data registers being modified as the record is being collected.
+** Because LCOFIs are used for Zihpm counter overflows as well, the handler may simply write all 1s to `__x__countinhibit`.
+. Read `scountovf` and service overflowed counters, then clear the associated counter overflow bits.
+** If `scountovf`[1]=1, there is a PDIS record to be collected.  
+*** If `mpdisctl`.MEM=0, software can read the PDIS Sample Data registers <<dataregs>> to collect the record.  
+*** If `mpdisctl`.MEM=1, follow the guidance in <<ambendis>> to ensure internally buffered records are flushed.  Step 1 above suffices for disabling the data source.  Software can then read the PDIS Memory Buffer (<<membuff>>) to collect the record.  Software must then clear `__x__pdisctl`.OF if continued sampling is desired.
+** Software may optionally collect other sample state, such as call-stack history.
+. Clear `__x__ip`.LCOFI
+. If `mpdisctl`.MEM=1 and `spdisambcs`.EN was cleared in step 2, follow the guidance in <<ambendis>> to re-enable it.
+. Software must clear `__x__countinhibit`[1] if continued sampling is desired.
+
+==== LAMBI Record Collection
+
+See <<lambi-handling>> for general guidance on handling LAMBIs.  Below is additional, PDIS-specific guidance for a LAMBI handler running in privilege mode _x_.
+
+In step 1, if `spdisambcs`.BMI=1, inhibiting the PDIS counter by setting `__x__countinhibit[1]`=1 serves to disable the PDIS data source.
+
+In step 4, if `spdisambcs`.BMI was set in step 1, software must clear `__x__countinhibit[1]` if continued sampling is desired.
