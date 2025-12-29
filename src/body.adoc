@@ -271,7 +271,7 @@ These registers are populated only when a sampled instruction is a qualified sam
 
 If the H extension is implemented, the same mappings above apply to `vsireg__i__` when `vsiselect` holds 0x60 or 0x61.
 
-PDIS Sample Data registers are implemented only if `mpdisctl`.MEM is not hardcoded to 1.
+PDIS Sample Data registers are implemented only if `mpdisctl`.MEM is not hardwired to 1.
 
 WARNING: _0x60 and 0x61 are proposed `*iselect` index values._
 
@@ -340,7 +340,7 @@ The `spdisfilter` register is a WARL register that allows the user to filter rec
 See <<pdislat>> for details on the latency values.
 |===
 
-If latency filtering is not supported, `spdisfilter` must be read-only 0.  Otherwise, THRESH and INV must remain writable.  LATSEL may optionally be hardcoded to 0, implying that only filtering by "Total latency" is supported.
+If latency filtering is not supported, `spdisfilter` must be read-only 0.  Otherwise, THRESH and INV must remain writable.  LATSEL may optionally be hardwired to 0, implying that only filtering by "Total latency" is supported.
 
 ==== Supervisor PDIS AMB Control and Status (`spdisambcs`)
 
@@ -566,7 +566,7 @@ For load, store, and load & store instructions, the following sample data is col
 | LLTLBMISS | Address translation missed the last-level TLB.
 | L1MISS | Data request missed the L1 cache.
 | LLMISS | Data request missed the last-level cache that can be tracked by the core, which may not be the last-level cache in the system.
-| DSRC | Data source.  Encodings for this field are implementation-defined, though 0 implies that DSRC is not implemented.
+| DSRC | Data source.  Encodings for this field are implementation-defined, though 0 implies that DSRC is not reported.
 | Others | Defined in <<recevents>> above.
 |===
 
@@ -684,7 +684,7 @@ _The dispatch point described above is intended to be shared with the Topdown an
 _This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, it is implementation-defined how the latency cycles are apportioned, though care should be taken that cycles are not double-counted (e.g., both ISSUE and DISPATCH increment for the same clock cycle).  One option is to select a single uop to which the latencies apply, though the TOTAL and OLDEST latencies should still end not on uop retirement but on instruction retirement (which could be simultaneous)._
 ====
 
-WARNING: _Some implementations may execute stores post-retirement.  This scheme does not capture the latency of that memory access.  That may be okay, since post-retire store accesses are off the critical path (don't hold up retire).  But they can occupy queue slots, cause stalls if queues fill, etc.  An altnernative would be to say that such stores are recorded until memory accesses complete?_
+NOTE: _Some implementations may execute stores post-retirement, such that stores perform a read-for-ownership (RFO) only once they are non-speculative and deallocated from the ROB.  For such post-retirement RFOs, the latency scheme described above will not capture the latency of such post-retirement RFOs, nor will the load/store event information described in <<pdishdrldst>> be captured.  It is left to a future extension to add formal PDIS support for such implementations, if needed.  Until then, such implementations should record EXECV=1 and EXECUTION=0 for sampled post-retirement stores._
 
 ==== PDIS Time (pdistime)
 
@@ -721,7 +721,7 @@ If the instruction was not flushed and the instruction is of type load, store, o
 
 NOTE: _A physical address or guest physical address written to pdisadr2 is shifted right by 2 bits to accommodate addresses wider than the current XLEN. The Sv32 page-based virtual-memory scheme described in Section 12.3 supports 34-bit physical addresses for RV32, so pdisadr2 must support addresses wider than XLEN for RV32. This shift-by-2 encoding of physical and guest physical addresses matches the encoding of physical addresses in PMP address registers (Section 3.7) and in page table entries (Section 12.3, Section 12.4, Section 12.5, and Section 12.6).  If the least-significant two bits are needed, these bits are the same as the least-significant two bits of the virtual address in pdisadr1._
 
-If an implementation does not support capturing physical addresses, `mpidsctl`.PA must be hardcoded to 0.  If an implementation does not support capturing guest-physical addresses, `vspdisctl`.PA must be hardcoded to 0.
+If an implementation does not support capturing physical addresses, `mpidsctl`.PA must be hardwired to 0.  If an implementation does not support capturing guest-physical addresses, `vspdisctl`.PA must be hardwired to 0.
 
 If the instruction was not flushed, the instruction is of type control transfer, and `mpdisctl`.EPT=1, pdisadr2 holds the target of the prior control transfer instruction.
 
