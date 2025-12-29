@@ -790,7 +790,7 @@ A custom PDIS extension that alters standard PDIS behavior must be associated wi
 
 PDIS supports collecting each sample record individually as well as a batch mode, where records accumulate in a memory buffer and are collected only once a buffer threshold is reached.
 
-To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.  
+To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.
 
 Batch mode is available only if `mpdisctl`.MEM=1.  To enable batch mode, PDIS is configured with `mpdisctl`.OF=1, to bypass per-record LCOFIs, and `spdisambcs`.BMIEN=1, to enable buffer management interrutps.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `spdisambcs`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `spdisambcs`.BMI=1.  The LAMBI handler can then collect the records.
 
@@ -802,8 +802,8 @@ The LCOFI handler, running in privilege mode _x_, should follow the guidance bel
 ** This avoids counting or sampling handler instructions, and avoids risk of the PDIS sample data registers being modified as the record is being collected.
 ** Because LCOFIs are used for Zihpm counter overflows as well, the handler may simply write all 1s to `__x__countinhibit`.
 . Read `scountovf` and service overflowed counters, then clear the associated counter overflow bits.
-** If `scountovf`[1]=1, there is a PDIS record to be collected.  
-*** If `mpdisctl`.MEM=0, software can read the PDIS Sample Data registers <<dataregs>> to collect the record.  
+** If `scountovf`[1]=1, there is a PDIS record to be collected.
+*** If `mpdisctl`.MEM=0, software can read the PDIS Sample Data registers <<dataregs>> to collect the record.
 *** If `mpdisctl`.MEM=1, follow the guidance in <<ambendis>> to ensure internally buffered records are flushed.  Step 1 above suffices for disabling the data source.  Software can then read the PDIS Memory Buffer (<<membuff>>) to collect the record.  Software must then clear `__x__pdisctl`.OF if an LCOFI on the next PDIS sample is desired.
 ** Software may optionally collect other sample state, such as call-stack history.
 . Clear `__x__ip`.LCOFI
