@@ -94,8 +94,6 @@ Because sampled instructions are chosen before they execute, it is not known whe
 
 The machine-level extension, Smpdis, encompasses all newly added CSRs and behavior modifications for a hart across all privilege levels. The corresponding supervisor-level extension, Sspdis, is essentially identical to Smpdis, except that it excludes machine-level CSRs and behaviors not intended to be directly accessible at the supervisor level.
 
-NOTE: _When to use event-based sampling (like Sspesa or Ssplcofi) vs instruction-based sampling (Smpdis/Sspdis) is an art rather than a science.  Say more here._
-
 [[pdiscsr]]
 === CSRs
 
