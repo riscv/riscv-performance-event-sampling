@@ -113,7 +113,8 @@ The `mpdisctl` register is a 64-bit WARL register that configures the PDIS mecha
     {bits:  1, name: 'TS'},
     {bits:  1, name: 'PA'},
     {bits:  1, name: 'EPT'},
-    {bits: 20, name: 'WARL', type: 1},
+    {bits: 19, name: 'WARL', type: 1},
+    {bits:  1, name: 'FNC'},
     {bits:  3, name: 'Custom'},
     {bits:  1, name: 'U'},
     {bits:  1, name: 'S'},
@@ -145,6 +146,7 @@ The `mpdisctl` register is a 64-bit WARL register that configures the PDIS mecha
 | TS | Enable recording of a timestamp per record.  See <<samprec>>.
 | PA | Enable recording the physical address of sampled explicit memory operations.  See <<samprec>>.
 | EPT | Enable recording of the prior control transfer target.  See <<samprec>>.
+| FNC | Set to 1 by hardware if the qualified sample requires a FENCE before collection.
 | Custom[2:0] | WARL bits designated for custom use.  The value 0 must correspond to standard behavior.  See <<Custom Extensions>>.
 | U  | Enable counting U-mode instructions.
 | S  | Enable counting S-mode instructions.
@@ -171,6 +173,8 @@ When the instruction completes, either by retiring, trapping, or being flushed b
 If the selected instruction is a qualified sample, the sample is recorded.  If MEM=1, the sample record (see <<samprec>>) is written to memory (see <<membuff>>).  If MEM=0, the sample is recorded to CSRs (see <<dataregs>>).
 
 If OF=0 and a sample is qualified, OF transitions to 1 and a local counter overflow interrupt (LCOFI) is pended.  If filtering is not applied to the sample (`spdisevmask`=0 and `spdisfilter`=0), and the sampled instruction neither traps nor is flushed, the LCOFI is guaranteed to be "skidless." Skidless implies that, in the absence of interrupt disabling, the LCOFI is taken before the next instruction in the same privilege mode retires.  This "skidless" LCOFI allows software to collect additional sample state (e.g., general purpose registers, call-stack addresses) before younger instructions can modify it.  For samples that do not meet the criteria that guarantees a skidless LCOFI, it is implementation-defined whether the LCOFI is skidless.
+
+If FNC=1, software should perform a FENCE instruction before collecting the sample record(s), to ensure that any sampled store is complete.
 
 [[pdisinh]]
 ==== Machine Count Inhibit Register (`mcountinhibit`)
@@ -402,14 +406,16 @@ When `hstateen0`.PDIS=0, PDIS continues to be able to sample instructions execut
 NOTE: _See Sscsrind for how bit 60 in `mstateen0` and `hstateen0` can also restrict access to `sireg*`/`siselect` and `vsireg*`/`vsiselect` from privilege modes less privileged than M-mode._
 
 [[sampsel]]
-=== Instruction Selection
+=== Instruction Selection and Execution
 
 PDIS selects instructions before they are dispatched to the backend (execution) pipeline.  Selection occurs when one of the following occurs.
 
 1. The PDIS counter (<<pdiscnt>>) overflows while there is no PDIS sample active; or
 2. A sample is discarded, due to backpressure or sample filtering, and `mpdisctl`.ACC=1.
 
-A sampled instruction remains active until it either retires, traps, or is flushed by an older mis-speculation.  If the PDIS counter overflows while a sample is active, this is known as a collision, and the counter is simply reloaded without selecting an instruction.
+A sampled instruction remains active until it either retires, traps, or is flushed by an older mis-speculation.  While the sample is active sample data is collected, including events and latencies incurred and addresses accessed by the sampled instruction.  See <<samprec>> for details on the collected data.
+
+If the PDIS counter overflows while a sample is active, this is known as a collision, and the counter is simply reloaded without selecting an instruction.
 
 NOTE: _To reduce the likelihood of collisions, implementations should recommend a minimum PDIS counter initial value.  For most implementations, this value should be approximately equal to the size of the out-of-order window._
 
@@ -421,10 +427,18 @@ An implementation may choose to fuse multiple instructions into a single uop for
 
 NOTE: _It is strongly recommended that implementations avoid bias in instruction selection.  Always choosing an instruction from decoder 0, for instance, could bias selection towards branch targets, or other instructions that are more likely to use decoder 0.  Similarly, when selecting a single memory access or uop from among multiple, avoiding bias to the degree possible will produce the most representative profile._
 
+[[postret-st]]
+==== Post-retirement Stores
+
+In some implementations, a store may be allowed to retire before it has fully completed its execution.  In this text, retire implies the uop is deallocated from the ROB, and hence younger instructions/uops are allowed to commit their state.  Such a store may retire when it is non-speculative (that is, neither the store nor an older instruction will trap), but before it has performed a read-for-ownership (RFO) and subsequent memory write.  Such implementations should extend sample active until the sampled store has fully completed (retired, RFO completed, and write performed) and set `mpdisctl`.FNC=1 for the sample, to ensure that software record collection waits for all sample data to be recorded.
+
+WARNING: _What to do about late-filtering w.r.t. post-retirement stores?  Better to wait for the store to complete and apply filters, at the expense of more interrupt skid?  Or keep the interrupt precise (after store retirement, but before store write execution), and skip filtering?_
+
+
 [[samprec]]
 === Sample Record
 
-The sample record includes all of the sample data collected during execution of the sampled instruction.  For RV64 the record is 64 bytes, while for RV32 the record is 32 bytes.
+The sample record includes all of the sample data collected during execution of a qualified sampled instruction.  For RV64 the record is 64 bytes, while for RV32 the record is 32 bytes.
 
 .PDIS Sample Record for RV64
 [cols="5%,90%,5%",options="header",grid=rows]
@@ -682,7 +696,7 @@ _The dispatch point described above is intended to be shared with the Topdown an
 _This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, it is implementation-defined how the latency cycles are apportioned, though care should be taken that cycles are not double-counted (e.g., both ISSUE and DISPATCH increment for the same clock cycle).  One option is to select a single uop to which the latencies apply, though the TOTAL and OLDEST latencies should still end not on uop retirement but on instruction retirement (which could be simultaneous)._
 ====
 
-WARNING: _Some implementations may execute stores post-retirement.  This scheme does not capture the latency of that memory access.  That may be okay, since post-retire store accesses are off the critical path (don't hold up retire).  But they can occupy queue slots, cause stalls if queues fill, etc.  An altnernative would be to say that such stores are recorded until memory accesses complete?_
+The post-retirement store implementations described in <<postret-st>> will violate the formula above.  For such stores, EXECUTION latency applies to the post-retirement (RFO/write) execution, while other latency definitions are unchanged.
 
 ==== PDIS Time (pdistime)
 
@@ -792,6 +806,7 @@ To collect records individually, local counter overflow interrupts (LCOFIs) are 
 
 Batch mode is available only if `mpdisctl`.MEM=1.  To enable batch mode, PDIS is configured with `mpdisctl`.OF=1, to bypass per-record LCOFIs, and `spdisambcs`.BMIEN=1, to enable buffer management interrutps.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `spdisambcs`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `spdisambcs`.BMI=1.  The LAMBI handler can then collect the records.
 
+[[lcofi-collection]]
 ==== LCOFI Record Collection
 
 The LCOFI handler, running in privilege mode _x_, should follow the guidance below when used for collecting PDIS records.
@@ -801,17 +816,21 @@ The LCOFI handler, running in privilege mode _x_, should follow the guidance bel
 ** Because LCOFIs are used for Zihpm counter overflows as well, the handler may simply write all 1s to `__x__countinhibit`.
 . Read `scountovf` and service overflowed counters, then clear the associated counter overflow bits.
 ** If `scountovf`[1]=1, there is a PDIS record to be collected.
+*** If `mpdisctl`.FNC=1, perform a FENCE to ensure any sampled store has completed, and all sample data has been captured.
 *** If `mpdisctl`.MEM=0, software can read the PDIS Sample Data registers <<dataregs>> to collect the record.
-*** If `mpdisctl`.MEM=1, follow the guidance in <<ambendis>> to ensure internally buffered records are flushed.  Step 1 above suffices for disabling the data source.  Software can then read the PDIS Memory Buffer (<<membuff>>) to collect the record.  Software must then clear `__x__pdisctl`.OF if an LCOFI on the next PDIS sample is desired.
+*** If `mpdisctl`.MEM=1, follow the guidance in <<ambendis>> to ensure internally buffered records are flushed.  Step 1 above suffices for disabling the data source.  Software can then read the PDIS Memory Buffer (<<membuff>>) to collect the record.
 ** Software may optionally collect other sample state, such as call-stack history.
+** Clear `mpdisctl`.OF and `mpdisctl`.FNC
 . Clear `__x__ip`.LCOFI
 . If `mpdisctl`.MEM=1 and `spdisambcs`.EN was cleared in step 2, follow the guidance in <<ambendis>> to re-enable it.
-. Software must clear `__x__countinhibit`[1] if continued sampling is desired.
+. Clear `__x__countinhibit`[1]
 
 ==== LAMBI Record Collection
 
 See <<lambi-handling>> for general guidance on handling LAMBIs.  Below is additional, PDIS-specific guidance for a LAMBI handler running in privilege mode _x_.
 
 In step 1, if `spdisambcs`.BMI=1, inhibiting the PDIS counter by setting `__x__countinhibit[1]`=1 serves to disable the PDIS data source.
+
+In step 3, if `spdisambcs`.BMI=1, follow the guidance in <<lcofi-collection>> above regarding `mpdisctl`.FNC when collecting PDIS record(s).
 
 In step 4, if `spdisambcs`.BMI was set in step 1, software must clear `__x__countinhibit[1]` if continued sampling is desired.
