@@ -749,7 +749,7 @@ NOTE: _When selecting a latency value for filtering that counts until the sample
 [[membuff]]
 === Memory Buffer
 
-The PDIS memory buffer is an instance of the Asynchronous Memory Buffer, as defined by the Ssamb extension, see Ch 1 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  The PDIS memory buffer (PMB) must be implemented if `mpdisctl`.MEM is not hardwired to 0. All optionality available within the Ssamb extension is available for the PMB.
+The PDIS memory buffer is an instance of the Asynchronous Memory Buffer, as defined by the Ssamb extension, see Ch 1 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  The PDIS memory buffer (PMB) must be implemented if `mpdisctl`.MEM is not hardwired to 0. All optionality available within the Ssamb extension is available for the PMB.  For batch mode support, PMB is required, see <<sampmodes>> for details.
 
 The PMB is configured using `spdisambcs`, `spdisambaddr`, `menvcfg`.PDISS, and `henvcfg`.PDISV.  See <<pdiscsr>> and the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification] for details.
 
@@ -790,7 +790,7 @@ PDIS supports collecting each sample record individually as well as a batch mode
 
 To collect records individually, local counter overflow interrupts (LCOFIs) are used to notify software when a record is available.  Software initializes PDIS with `mpdisctl`.OF=0.  When a sampled instruction is qualified, the OF bit will transition to 1 and an LCOFI is pended.  The LCOFI handler will observe `scountovf`[1]=1, which indicates a PDIS sample is available.
 
-Batch mode is available only if `mpdisctl`.MEM=1.  To enable batch mode, PDIS is configured with `mpdisctl`.OF=1, to bypass per-record LCOFIs, and `spdisambcs`.BMIEN=1, to enable buffer management interrutps.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `spdisambcs`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `spdisambcs`.BMI=1.  The LAMBI handler can then collect the records.
+Batch mode is available only if `mpdisctl`.MEM=1.  To enable batch mode, PDIS is configured with `mpdisctl`.OF=1, to bypass per-record LCOFIs, and `spdisambcs`.BMIEN=1, to enable buffer management interrupts.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `spdisambcs`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `spdisambcs`.BMI=1.  The LAMBI handler can then collect the records.
 
 ==== LCOFI Record Collection
 
