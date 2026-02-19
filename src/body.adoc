@@ -688,7 +688,7 @@ _The dispatch point described above is intended to be shared with the Topdown an
 _This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, it is implementation-defined how the latency cycles are apportioned, though care should be taken that cycles are not double-counted (e.g., both ISSUE and DISPATCH increment for the same clock cycle).  One option is to select a single uop to which the latencies apply, though the TOTAL and OLDEST latencies should still end not on uop retirement but on instruction retirement (which could be simultaneous)._
 ====
 
-The post-retirement store implementations described in <<postret-st>> will violate the formula above.  For such stores, EXECUTION latency applies to the post-retirement (RFO/write) execution, while other latency definitions are unchanged.
+The post-retirement store implementations described in <<sampsel>> will violate the formula above.  For such stores, EXECUTION latency applies to the post-retirement (RFO/write) execution, while other latency definitions are unchanged.
 
 ==== PDIS Time (pdistime)
 
