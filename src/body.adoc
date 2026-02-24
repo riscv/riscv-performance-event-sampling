@@ -402,20 +402,26 @@ When `hstateen0`.PDIS=0, PDIS continues to be able to sample instructions execut
 NOTE: _See Sscsrind for how bit 60 in `mstateen0` and `hstateen0` can also restrict access to `sireg*`/`siselect` and `vsireg*`/`vsiselect` from privilege modes less privileged than M-mode._
 
 [[sampsel]]
-=== Instruction Selection
+=== Instruction Selection and Execution
 
 PDIS selects instructions before they are dispatched to the backend (execution) pipeline.  Selection occurs when one of the following occurs.
 
 1. The PDIS counter (<<pdiscnt>>) overflows while there is no PDIS sample active; or
 2. A sample is discarded, due to backpressure or sample filtering, and `mpdisctl`.ACC=1.
 
-A sampled instruction remains active until it either retires, traps, or is flushed by an older mis-speculation.  If the PDIS counter overflows while a sample is active, this is known as a collision, and the counter is simply reloaded without selecting an instruction.
+A sampled instruction remains active until it either retires, traps, or is flushed by an older mis-speculation.  While the sample is active sample data is collected, including events and latencies incurred and addresses accessed by the sampled instruction.  See <<samprec>> for details on the collected data.
+
+If the PDIS counter overflows while a sample is active, this is known as a collision, and the counter is simply reloaded without selecting an instruction.
 
 NOTE: _To reduce the likelihood of collisions, implementations should recommend a minimum PDIS counter initial value.  For most implementations, this value should be approximately equal to the size of the out-of-order window._
 
 An implementation may choose to break some complex instructions into a series of micro-operations (uops) for execution.  Such implementations may opt to collect sample data for a single uop, rather than the full execution of the complex instruction.  The implication of such a choice is that many PDIS record fields will reflect only the execution of that uop, and not other uops within the same instruction flow.  In such cases, the pdishdrev.PARTIAL bit is set to 1.
 
 For instructions that perform multiple explicit memory accesses, a single access must be selected for populating the data virtual address, data physical or guest physical address, and the memory-specific fields described in <<pdishdrldst>>.  Optionally other sample record fields may also reflect only values associated with the selected memory access.  Which memory access is selected is implementation-defined.  These instructions always set pdishdrev.PARTIAL to 1.
+
+In some implementations, a store may be allowed to retire before it has fully completed its execution.  In this text, retire implies that the uop is deallocated from the ROB, and hence younger instructions/uops are allowed to commit their state.  Such a store may retire when it is non-speculative (that is, neither the store nor an older instruction will trap, and hence the store is guaranteed to retire), but before it has performed a read-for-ownership (RFO) and subsequent memory write.  In such implementations, the post-retirement portion of execution may not be captured by PDIS, which could result in record fields like L1MISS, LLMISS, and DSRC not being populated.  In such cases, the pdishdrev.PARTIAL bit is set to 1.
+
+NOTE: _A PDIS implementation could choose to capture the post-retirement portion of store execution, but this would require the implementation to ensure that the handler for an LCOFI pended on qualification of the sampled store (assumes `mpdisctl`.MEM=0) is not invoked until the store has completed its execution and the PDIS record is fully populated._
 
 An implementation may choose to fuse multiple instructions into a single uop for execution such that, if a fused instruction is selected for sampling, the sample record may reflect execution of instruction(s) other than that residing at the PDIS PC address.  The sample record in such cases sets pdishdrev.FUSED to 1.
 
@@ -424,7 +430,7 @@ NOTE: _It is strongly recommended that implementations avoid bias in instruction
 [[samprec]]
 === Sample Record
 
-The sample record includes all of the sample data collected during execution of the sampled instruction.  For RV64 the record is 64 bytes, while for RV32 the record is 32 bytes.
+The sample record includes all of the sample data collected during execution of a qualified sampled instruction.  For RV64 the record is 64 bytes, while for RV32 the record is 32 bytes.
 
 .PDIS Sample Record for RV64
 [cols="5%,90%,5%",options="header",grid=rows]
@@ -682,7 +688,7 @@ _The dispatch point described above is intended to be shared with the Topdown an
 _This gets more complicated for instructions that perform multiple operations, such as a load-op instruction, or an instruction that performs multiple loads.  For such instructions, it is implementation-defined how the latency cycles are apportioned, though care should be taken that cycles are not double-counted (e.g., both ISSUE and DISPATCH increment for the same clock cycle).  One option is to select a single uop to which the latencies apply, though the TOTAL and OLDEST latencies should still end not on uop retirement but on instruction retirement (which could be simultaneous)._
 ====
 
-WARNING: _Some implementations may execute stores post-retirement.  This scheme does not capture the latency of that memory access.  That may be okay, since post-retire store accesses are off the critical path (don't hold up retire).  But they can occupy queue slots, cause stalls if queues fill, etc.  An altnernative would be to say that such stores are recorded until memory accesses complete?_
+The post-retirement store implementations described in <<sampsel>> will violate the formula above.  For such stores, EXECUTION latency applies to the post-retirement (RFO/write) execution, while other latency definitions are unchanged.
 
 ==== PDIS Time (pdistime)
 
@@ -792,6 +798,7 @@ To collect records individually, local counter overflow interrupts (LCOFIs) are 
 
 Batch mode is available only if `mpdisctl`.MEM=1.  To enable batch mode, PDIS is configured with `mpdisctl`.OF=1, to bypass per-record LCOFIs, and `spdisambcs`.BMIEN=1, to enable buffer management interrupts.  When a sampled instruction is qualified, a sample record will be stored to the PDIS Memory Buffer (<<membuff>>).  Once the buffer write pointer reaches the `spdisambcs`.BMITH threshold, a local asynchronous memory buffer interrupt (LAMBI) is pended with `spdisambcs`.BMI=1.  The LAMBI handler can then collect the records.
 
+[[lcofi-collection]]
 ==== LCOFI Record Collection
 
 The LCOFI handler, running in privilege mode _x_, should follow the guidance below when used for collecting PDIS records.
@@ -802,11 +809,12 @@ The LCOFI handler, running in privilege mode _x_, should follow the guidance bel
 . Read `scountovf` and service overflowed counters, then clear the associated counter overflow bits.
 ** If `scountovf`[1]=1, there is a PDIS record to be collected.
 *** If `mpdisctl`.MEM=0, software can read the PDIS Sample Data registers <<dataregs>> to collect the record.
-*** If `mpdisctl`.MEM=1, follow the guidance in <<ambendis>> to ensure internally buffered records are flushed.  Step 1 above suffices for disabling the data source.  Software can then read the PDIS Memory Buffer (<<membuff>>) to collect the record.  Software must then clear `__x__pdisctl`.OF if an LCOFI on the next PDIS sample is desired.
+*** If `mpdisctl`.MEM=1, follow the guidance in <<ambendis>> to ensure internally buffered records are flushed.  Step 1 above suffices for disabling the data source.  Software can then read the PDIS Memory Buffer (<<membuff>>) to collect the record.
 ** Software may optionally collect other sample state, such as call-stack history.
+** Clear `mpdisctl`.OF
 . Clear `__x__ip`.LCOFI
 . If `mpdisctl`.MEM=1 and `spdisambcs`.EN was cleared in step 2, follow the guidance in <<ambendis>> to re-enable it.
-. Software must clear `__x__countinhibit`[1] if continued sampling is desired.
+. Clear `__x__countinhibit`[1]
 
 ==== LAMBI Record Collection
 
