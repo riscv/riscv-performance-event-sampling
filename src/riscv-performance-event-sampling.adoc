@@ -3,9 +3,17 @@ Authors: RV Performance Event Sampling TG
 :docgroup: RV Performance Event Sampling TG
 :description: RISC-V Performance Event Sampling Specification
 :company: RISC-V.org
-:revdate: 01/08/2025
-:revnumber: 0.0.1
-:revremark: This document is under development. Expect potential changes. Visit http://riscv.org/spec-state for further details.
+// Version and phase identity come from scripts/release-info.sh via the Makefile
+// (-a overrides). The ifndef defaults below only apply to a bare `asciidoctor`
+// invocation, so a manual render still produces a coherent document.
+ifndef::revnumber[:revnumber: v0.0]
+ifndef::revdate[:revdate: 1/2026]
+ifndef::phase[:phase: draft-and-development]
+ifndef::phase_display[:phase_display: {phase}]
+ifndef::phase_notice[:phase_notice: Assume everything is subject to change. At this stage, ideas, structures, and content are still evolving. Feedback and iteration are encouraged as nothing is final, and adjustments may be frequent.]
+ifndef::revremark[:revremark: This document is under development. Expect potential changes. Visit http://riscv.org/spec-state for further details.]
+ifndef::milestone_id[:milestone_id: {phase}]
+ifndef::spec_short[:spec_short: riscv-performance-event-sampling]
 :revinfo:
 :url-riscv: http://riscv.org
 :doctype: book
@@ -28,8 +36,9 @@ Authors: RV Performance Event Sampling TG
 :lang: en
 :listing-caption: Listing
 :sectnums:
-:toc: left
+:toc: macro
 :toclevels: 4
+:toc-title: Table of Contents
 :source-highlighter: pygments
 ifdef::backend-pdf[]
 :source-highlighter: coderay
@@ -40,6 +49,28 @@ endif::[]
 :footnote:
 :xrefstyle: short
 
+// ARC requires the phase notice as page 2, immediately before the TOC. This
+// replaces the WARNING admonition that used to carry the same message: the
+// title-page revision line now shows the milestone label via {revremark}, and
+// this preface carries the full notice. See ARC_SUBMISSION.md.
+[preface]
+== Document State
+*Note:* {phase_notice}
+
+toc::[]
+
+[preface]
+== List of figures
+list-of::image[hide_empty_section=true, enhanced_rendering=true]
+
+[preface]
+== List of tables
+list-of::table[hide_empty_section=true, enhanced_rendering=true]
+
+[preface]
+== List of listings
+list-of::listing[hide_empty_section=true, enhanced_rendering=true]
+
 [preface]
 == Copyright and license information
 This specification is licensed under the Creative Commons
@@ -47,15 +78,7 @@ Attribution 4.0 International License (CC-BY 4.0). The full
 license text is available at
 https://creativecommons.org/licenses/by/4.0/.
 
-Copyright 2025 by RISC-V International.
-
-[WARNING]
-.This document is in the link:http://riscv.org/spec-state[Development state]
-====
-Expect potential changes. This draft specification is likely to evolve before
-it is accepted as a standard. Implementations based on this draft
-may not conform to the future standard.
-====
+Copyright 2026 by RISC-V International.
 
 [preface]
 include::contributors.adoc[]
