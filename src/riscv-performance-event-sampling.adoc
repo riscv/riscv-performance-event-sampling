@@ -29,7 +29,7 @@ ifndef::spec_short[:spec_short: riscv-performance-event-sampling]
 //:WaveDromEditorApp: app/wavedrom-editor.app
 :imagesoutdir: images
 //:srcdir: src
-:bibtex-file: src/example.bib
+:bibtex-file: modules/ROOT/resources/example.bib
 :bibtex-order: alphabetical
 :bibtex-style: apa
 :icons: font
@@ -80,11 +80,18 @@ https://creativecommons.org/licenses/by/4.0/.
 
 Copyright 2026 by RISC-V International.
 
+// Chapter sources live under modules/ROOT/pages/ so they double as standalone
+// Antora pages (each with a level-0 title). leveloffset=+1 demotes those titles
+// by one level here, reproducing the PDF section structure exactly as it was
+// before the split. This file is the single PDF assembler; the pages are the
+// single content source. See ANTORA.md.
 [preface]
-include::contributors.adoc[]
+include::../modules/ROOT/pages/contributors.adoc[leveloffset=+1]
 
-include::intro.adoc[]
-include::body.adoc[]
+include::../modules/ROOT/pages/intro.adoc[leveloffset=+1]
+include::../modules/ROOT/pages/sspesa.adoc[leveloffset=+1]
+include::../modules/ROOT/pages/ssplcofi.adoc[leveloffset=+1]
+include::../modules/ROOT/pages/spdis.adoc[leveloffset=+1]
 
 // The index must precede the bibliography
 //include::index.adoc[]

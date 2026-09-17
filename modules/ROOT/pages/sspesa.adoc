@@ -1,17 +1,22 @@
-== Precise Event Sample Attribution ISA Extension (Sspesa)
+[#sspesa]
+= Precise Event Sample Attribution ISA Extension (Sspesa)
+// Cross-chapter reference: the PDF assembler flattens every chapter into one
+// document, where <<smpdis>> resolves; Antora publishes one page per chapter and
+// needs xref:spdis.adoc#smpdis[]. antora.yml overrides this default for the site.
+ifndef::smpdis-ref[:smpdis-ref: <<smpdis>>]
 
 The Sspesa extension defines a mechanism by which the hart will, upon Zihpm counter overflow, record a PC and metadata associated with the instruction to which the sampled event should be attributed.  From this PC and metadata, and optionally other state, the attribution PC can be determined.  For select performance events precise attribution is supported, such that the derived PC is that of the instruction that incurred the event that caused the overflow.  The list of such events is implementation-defined.  For other performance events, the derived PC is the best PC for attribution that the implementation can provide.
 
 NOTE: _The set of performance events that support precise attribution with Sspesa should be discoverable via the implementation's performance event JSON file.  Events with the 'PesaSupported' (TBD) attribute set to true support precise attribution._
 
-=== Sspesa Profile Types and Sources of Error
+== Sspesa Profile Types and Sources of Error
 
 Sspesa enables generating two types of performance profiles:
 
 * *Event-based performance profiles* in which the weight of an instruction in the profile is approximately proportional to the number of times it was subjected to the event. Event-based profiles are most useful when tracking down the instructions responsible for a problematic performance event. For example, if an application suffers from many L1 data cache misses, a sorted event-based profile obtained for the data L1 cache miss performance event provides an ordered list of the instructions that are responsible for most L1 data cache misses.
 * *Time-based performance profiles* in which the weight of an instruction in the profile is approximately proportional to its contribution to overall execution time. To obtain such a profile a counter is configured to sample on cycles. Upon overflow of the counter, Sspesa allows profiling software to approximate the instruction(s) whose exection time was exposed at the time the sample was taken. A sorted time-based profile orders the workload's instructions according to their approximate impact on overall execution time, and is hence most useful as a first-pass approach for identifying application hot spots.
 
-NOTE: _In contrast to Sspesa, Smpdis/Sspdis (see <<smpdis>>) create profiles in which an instruction is represented proportionally to its execution count._
+NOTE: _In contrast to Sspesa, Smpdis/Sspdis (see {smpdis-ref}) create profiles in which an instruction is represented proportionally to its execution count._
 
 Performance profiles obtained through sampling are approximate for two reasons. The first is systematic error (or bias) which reduces profile accuracy by attributing a counter overflow to a different instruction than the one that caused it.  Sspesa aims to eliminate such inaccuracies for events that support precise attribution, and to minimize it for other events.  For example, upon overflow of a counter configured to count an L1 data cache miss event that supports precise attribution, an Sspesa implementation allows the PC of the instruction that caused the counter overflow to be discerned.
 
@@ -19,9 +24,9 @@ Time-based profiles are more complicated because no specific instruction caused 
 
 Statistical (or random) error is the second reason why all sample-based profiles are approximate. This is a byproduct of sampling events, rather than collecting attribution information for every event occurrence.  This source of imprecision can be mitigated by increasing the sample rate, though even sampling at 4kHz (the default for Linux perf) typically shows negligible error.
 
-=== CSRs
+== CSRs
 
-==== Hardware Performance Monitor Sample PC Register (`shpmspc`)
+=== Hardware Performance Monitor Sample PC Register (`shpmspc`)
 
 `shpmspc` is an SXLEN-bit read/write register that holds a sample PC value.  `shpmspc` captures a PC value when a Zihpm counter (`mhpmcounter__i__`) overflows, such that `mhpmevent__i__`.OF transitions from 0 to 1 and `__x__ip`.LCOFIP transitions from 0 to 1 (where _x_ reflects the privilege mode to which LCOFIs are delegated).
 
@@ -48,7 +53,7 @@ Attempts to access `shpmspc` from VS-mode mode raise a virtual instruction excep
 
 `shpmspc` is a WARL register that must be able to hold all valid virtual addresses. It need not be capable of holding all possible invalid addresses. Prior to writing `shpmspc`, implementations may convert an invalid address into some other invalid address that `shpmspc` is capable of holding.
 
-==== Hardware Performance Monitor Sample Metadata (`shpmsdata`)
+=== Hardware Performance Monitor Sample Metadata (`shpmsdata`)
 
 `shpmsdata` is an SXLEN-bit read/write WARL register that holds sample metadata.  The CNTRID field holds the ID of the counter whose overflow caused the sample metadata to be captured. If more than one counter overflows simultaneously, CNTRID holds the ID of the numerically lowest counter.
 
