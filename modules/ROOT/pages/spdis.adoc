@@ -135,7 +135,7 @@ NOTE: _The PDIS counter is limited to 32 bits since, unlike Zihpm counters, it i
 
 Hardware writes the COUNT field with the value held in the INITVAL field when the PDIS counter overflows, such that a hardware update causes `spdiscounter`.COUNT[31] to transition from 1 to 0.
 
-NOTE: _This harware counter reload mechanism is not guaranteed to be lossless.  The COUNT field may be incremented beyond 0 before the write occurs, and any event increments that occur in the same cycle as the write may be dropped.  Implementations are encouraged to minimize the incidence of skid and dropped counts, as these add noise to the sampling rate._
+NOTE: _This hardware counter reload mechanism is not guaranteed to be lossless.  The COUNT field may be incremented beyond 0 before the write occurs, and any event increments that occur in the same cycle as the write may be dropped.  Implementations are encouraged to minimize the incidence of skid and dropped counts, as these add noise to the sampling rate._
 
 [[dataregs]]
 === Supervisor PDIS Sample Data Register Access
@@ -255,11 +255,11 @@ If latency filtering is not supported, `spdisfilter` must be read-only 0.  Other
 
 === Supervisor PDIS AMB Control and Status (`spdisambcs`)
 
-The `spdisambcs` register is the PDIS instatiation of the `sambcs` register defined by the Ssamb extension, see Section 1.1.1 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  It is implemented only if `mpdisctl`.MEM is not hardwired to 0.  See <<membuff>> for PDIS Memory Buffer details.
+The `spdisambcs` register is the PDIS instantiation of the `sambcs` register defined by the Ssamb extension, see Section 1.1.1 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  It is implemented only if `mpdisctl`.MEM is not hardwired to 0.  See <<membuff>> for PDIS Memory Buffer details.
 
 === Supervisor PDIS AMB Address (`spdisambaddr`)
 
-The `spdisambaddr` register is the PDIS instatiation of the `sambaddr` register defined in the Ssamb specification, see Section 1.1.2 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  It is implemented only if `mpdisctl`.MEM is not hardwired to 0.  See <<membuff>> for PDIS Memory Buffer details.
+The `spdisambaddr` register is the PDIS instantiation of the `sambaddr` register defined in the Ssamb specification, see Section 1.1.2 of the https://github.com/riscv/self-hosted-trace/releases[Self-hosted Trace Specification].  It is implemented only if `mpdisctl`.MEM is not hardwired to 0.  See <<membuff>> for PDIS Memory Buffer details.
 
 For RV64 implementations, bits 6:0 are hardwired to 0, while for RV32 implementations, bits 5:0 are hardwired to 0.  This ensures that records are aligned to their size, see <<samprec>> for details.
 
