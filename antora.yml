@@ -1,0 +1,53 @@
+---
+# Antora Component Descriptor
+# https://docs.antora.org/antora/latest/component-version-descriptor/
+#
+# Keep this file minimal. When this repo is published as a content source in the
+# central playbook (github.com/riscv-admin/antora.riscv.org), that playbook
+# supplies the shared AsciiDoc attributes (doctype, icons, xrefstyle,
+# source-highlighter, kroki config, math entities, ...) and the extensions
+# (asciidoctor-kroki, mathjax, bibliography, section/nav numbering) uniformly to
+# every spec. Attributes set HERE would override the playbook and desync this
+# spec from the rest of the library -- notably `sectnums`, which the central
+# section-numbering extension controls per component. Put preview-only rendering
+# config in antora-playbook.yml (which mirrors production), not here.
+
+name: riscv-performance-event-sampling
+title: RISC-V Performance Event Sampling Specification
+# The site version is kept in EXACT lockstep with the ARC submission PDF: it is
+# the vX.Y release tag, per the ARC Author Guide. Do not hand-edit -- it is
+# stamped from scripts/release-info.sh (the same source the PDF build uses).
+version: v0.0
+
+nav:
+  - modules/ROOT/nav.adoc
+
+asciidoc:
+  attributes:
+    page-group: isa
+    # Path (Antora resource ID) to this spec's BibTeX database, consumed by the
+    # central playbook's ASAM bibliography extension to resolve `cite:` macros
+    # and render `bibliography::[]`. The spec currently has no `cite:` macros;
+    # this is wired up so adding one works without further configuration.
+    asamBibliography: ROOT:resources/example.bib
+    # Cover logo for index.adoc, as an Antora resource ID. The default is the
+    # shared asset from the central `common` component, which is what the
+    # riscv.org production build uses.
+    cover-logo: common::risc-v_logo.svg
+    # The single cross-chapter reference in this spec. The PDF assembler
+    # flattens every chapter into one document, where sspesa.adoc's
+    # `ifndef::smpdis-ref[:smpdis-ref: <<smpdis>>]` default resolves. Antora
+    # publishes one page per chapter, so on the site it needs the cross-page
+    # form supplied here. Antora hard-sets this, so it wins over the page
+    # default. See CONTRIBUTING.md, "Repository layout".
+    smpdis-ref: xref:spdis.adoc#smpdis[Precise Decoded Instruction Sampling (Smpdis/Sspdis)]
+    # Release metadata for the cover page (index.adoc), kept in lockstep with
+    # the PDF title page. Stamped by scripts/stamp-antora-version.sh; the
+    # `version:` key above is authoritative and page-revnumber mirrors it for
+    # display. Do not hand-edit.
+    page-revnumber: v0.0
+    page-revdate: 2026-09-17
+    page-phase: draft-and-development
+    page-phase-display: Draft and Development
+    page-phase-notice: Assume everything is subject to change. At this stage, ideas, structures, and content are still evolving. Feedback and iteration
+      are encouraged as nothing is final, and adjustments may be frequent.
