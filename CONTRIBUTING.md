@@ -2,6 +2,48 @@
 
 As an open-source project, we appreciate and encourage community members to submit patches directly to the project. To maintain a well-organized development environment, we have established standards and methods for submitting changes. This document outlines the process for submitting patches to the project, ensuring that your contribution is swiftly incorporated into the codebase.
 
+# Repository layout
+
+Chapter prose lives under `modules/ROOT/pages/`, one file per chapter:
+
+| File | Chapter |
+| --- | --- |
+| `modules/ROOT/pages/intro.adoc` | Introduction |
+| `modules/ROOT/pages/sspesa.adoc` | Precise Event Sample Attribution (Sspesa) |
+| `modules/ROOT/pages/ssplcofi.adoc` | Precise Local Counter Overflow Interrupt (Ssplcofi) |
+| `modules/ROOT/pages/spdis.adoc` | Precise Decoded Instruction Sampling (Smpdis/Sspdis) |
+| `modules/ROOT/pages/contributors.adoc` | Contributors |
+
+These files are the single source of content. They are published directly as
+pages of the HTML site, and `src/riscv-performance-event-sampling.adoc` -- the
+PDF assembler -- includes them to build the specification PDF. Edit the pages;
+the assembler only carries the document header, the prefaces, and the include
+list.
+
+Two conventions follow from a file being both a chapter and a web page:
+
+- **Each page starts with a level-0 title** (`= Chapter Name`), and its
+  subsections start at `==`. The assembler includes each page with
+  `leveloffset=+1`, which demotes those titles to `==`/`===` in the PDF, so
+  the PDF's section structure is unaffected.
+- **Cross-references within a chapter** use `<<anchor>>` as before.
+  **Cross-references between chapters** need `xref:file.adoc#anchor[]`, which
+  the PDF build cannot resolve. Where one is needed, put the reference in an
+  attribute with an `ifndef` default (see `sspesa.adoc` for the worked
+  example) so both builds render it correctly.
+
+Prefer an explicit `[[anchor]]` over referring to a section by its title.
+Two sections in this specification are both called "CSRs", and a by-title
+reference to one of them silently resolved to the wrong chapter for some time.
+
+# Building
+
+    make                                  # PDF + HTML into build/
+    make VERSION=v0.8 DATE=2026-06-12     # build a specific version
+
+The build runs in a container and initializes the `docs-resources` submodule
+if it is missing.
+
 # Licensing
 
 Licensing is crucial for open-source projects, as it guarantees that the software remains available under the conditions specified by the author.

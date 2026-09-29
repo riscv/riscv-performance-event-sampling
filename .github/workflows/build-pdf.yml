@@ -185,3 +185,100 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GHTOKEN || secrets.GITHUB_TOKEN }}
         if: env.RELEASABLE == 'true' && env.OFFICIAL_RELEASE != 'true'
+
+  # Keep the Antora HTML site version in EXACT lockstep with the PDF this run just
+  # built: stamp the SAME resolved version/date into antora.yml on main, so the
+  # published site carries the version the PDF carries. The PDF and this stamp come
+  # from one build job (same source, same VERSION/DATE) -- they cannot drift.
+  #
+  # Runs only for real releases, never PR previews. Never moves main's version
+  # backwards, so rebuilding an older tag will not regress the site.
+  #
+  # The stamp lands as a REVIEW PR, not a direct push to `main`: a rejected push
+  # under branch protection would leave the release green while the site version
+  # silently lagged the PDF -- the exact divergence this job exists to prevent.
+  # Merging that PR is part of cutting a release (see MIGRATION.md Step 14).
+  stamp-site-version:
+    needs: build
+    runs-on: ubuntu-latest
+    if: needs.build.outputs.releasable == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GHTOKEN || secrets.GITHUB_TOKEN }}
+          # Do not persist the token as a git extraheader. create-pull-request
+          # injects its own auth header; a persisted one here makes git send two
+          # Authorization headers -> GitHub 400 "Duplicate header: Authorization".
+          persist-credentials: false
+
+      - name: Stamp antora.yml to match the released PDF version
+        id: stamp
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          DATE: ${{ needs.build.outputs.date }}
+        run: |
+          set -euo pipefail
+
+          current="$(grep -E '^version:' antora.yml | awk '{print $2}')"
+          echo "main antora.yml version: ${current:-<none>}; released version: $VERSION"
+
+          # Monotonic guard: never stamp main backwards (e.g. when an old tag is
+          # rebuilt). Compare by DECIMAL order via release-info.sh -- `sort -V`
+          # would rank v0.8 below v0.61 and stamp the site backwards.
+          #
+          # Skip at >=, not just at >. At an EQUAL version the only field that can
+          # still differ is page-revdate, and a PR that moves a released version's
+          # date forward is pure churn that also misdates the release.
+          if [ -n "$current" ] && [ "$current" != "~" ]; then
+            if [ "$(./scripts/release-info.sh compare "$current" "$VERSION")" != "-1" ]; then
+              echo "main is already at $current (>= $VERSION); skipping stamp."
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          # Leaves antora.yml modified in the worktree; create-pull-request below
+          # is what commits it. stamp-antora fails loudly if it cannot stamp, so a
+          # no-op here means "already correct", never "silently did nothing".
+          make stamp-antora VERSION="$VERSION" DATE="$DATE"
+
+          if git diff --quiet -- antora.yml; then
+            echo "antora.yml already matches $VERSION; nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open site version stamp PR
+        if: steps.stamp.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GHTOKEN || secrets.GITHUB_TOKEN }}
+          base: main
+          commit-message: 'chore(site): stamp Antora version ${{ needs.build.outputs.version }} to match PDF'
+          branch: gitbot/stamp-site-${{ needs.build.outputs.version }}
+          delete-branch: true
+          title: Stamp Antora site version ${{ needs.build.outputs.version }} to match released PDF
+          body: |
+            This PR was opened automatically by the `${{ needs.build.outputs.version }}` release build.
+
+            The ARC Author Guide requires the published HTML site version to match
+            the submission PDF exactly. Antora reads a static `version:` from the
+            committed `antora.yml`, so a release has to stamp that file.
+
+            Released PDF version: `${{ needs.build.outputs.version }}` (${{ needs.build.outputs.date }})
+
+            **Until this merges, the site version lags the released PDF.** The
+            values come from `scripts/release-info.sh` -- the same source the PDF
+            build uses -- so this needs a merge, not an edit.
+          labels: |
+            site-version
+            automated
+          add-paths: |
+            antora.yml
