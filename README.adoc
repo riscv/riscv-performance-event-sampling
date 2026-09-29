@@ -1,6 +1,6 @@
 = RISC-V Performance Event Sampling Specifications
 
-This repo holds the specifications for the RV Performance Event Sampling TG.
+This repo holds the specifications for the RV Performance Event Sampling TG. It can be read online at https://riscv.github.io/riscv-performance-event-sampling/
 
 Mailing list: https://lists.riscv.org/g/tech-performance-event-sampling
 
