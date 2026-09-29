@@ -1,5 +1,5 @@
-[[intro]]
-== Introduction
+[#intro]
+= Introduction
 
 RISC-V hardware performance monitoring counters (Zihpm) provide support for counting performance events, and, with Sscofpmf, support basic, interrupt-based performance event sampling. These extensions provide a means for collecting performance event counts across a window of software execution.
 
