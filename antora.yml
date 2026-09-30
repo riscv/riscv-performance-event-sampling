@@ -17,7 +17,7 @@ title: RISC-V Performance Event Sampling Specification
 # The site version is kept in EXACT lockstep with the ARC submission PDF: it is
 # the vX.Y release tag, per the ARC Author Guide. Do not hand-edit -- it is
 # stamped from scripts/release-info.sh (the same source the PDF build uses).
-version: v0.0
+version: v0.8
 
 nav:
   - modules/ROOT/nav.adoc
@@ -45,9 +45,8 @@ asciidoc:
     # the PDF title page. Stamped by scripts/stamp-antora-version.sh; the
     # `version:` key above is authoritative and page-revnumber mirrors it for
     # display. Do not hand-edit.
-    page-revnumber: v0.0
-    page-revdate: 2026-09-17
-    page-phase: draft-and-development
-    page-phase-display: Draft and Development
-    page-phase-notice: Assume everything is subject to change. At this stage, ideas, structures, and content are still evolving. Feedback and iteration
-      are encouraged as nothing is final, and adjustments may be frequent.
+    page-revnumber: v0.8
+    page-revdate: 2026-09-29
+    page-phase: stabilized
+    page-phase-display: 'Stabilized'
+    page-phase-notice: 'Changes may still occur, but they should be limited in scope. The core structure and content are mostly settled, with only refinements or necessary adjustments expected. Any modifications should be carefully considered to maintain stability.'

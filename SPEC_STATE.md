@@ -1,9 +1,9 @@
 # Specification State
 
-Current milestone: draft-and-development
-Current state: draft-and-development
-Current version: v0.0
-Last updated: 2026-09-17
+Current milestone: v0.8 stabilized
+Current state: stabilized
+Current version: v0.8
+Last updated: 2026-09-29
 
 ## Milestone Targets
 

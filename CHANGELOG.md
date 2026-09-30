@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Specification advanced to v0.8 (Stabilized) for the TG Stabilization
+  Milestone vote: `SPEC_STATE.md` and `antora.yml` stamped with the
+  template's `scripts/update-spec-state.sh` and `make stamp-antora`.
 - Migrated to the dual-source layout from `riscv/docs-spec-template` (#80).
   Chapter prose moved from `src/body.adoc` to one file per chapter under
   `modules/ROOT/pages/`; `src/riscv-performance-event-sampling.adoc` is now a
