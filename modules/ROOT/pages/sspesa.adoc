@@ -59,7 +59,7 @@ Attempts to access `shpmspc` from VS-mode mode raise a virtual instruction excep
 
 NOTE: _As an example, for simultaneous overflow of `mhpmcounter5` and `mhpmcounter9`, CNTRID would hold 5._
 
-The format of the remaining bits is implementation-defined, serving to provide any metadata necessary to derive the sample PC from `shpmspc` and any other relevant state.  For implementations where `shpmspc` captures the precise sample PC, or where no additional metadata is needed, the remaining `shpmsdata` bits may be hardwired to 0.
+The PRIV field records the privilege mode and virtualization state at the time `shpmspc` was captured, allowing software to correctly interpret the sample PC independently of any LCOFI skid.  The format of the remaining bits is implementation-defined, serving to provide any metadata necessary to derive the sample PC from `shpmspc` and any other relevant state.  For implementations where `shpmspc` captures the precise sample PC, or where no additional metadata is needed, the remaining `shpmsdata` bits [63:8] may be hardwired to 0.
 
 .Sample Metadata Register for SXLEN=64
 [%unbreakable]
@@ -67,9 +67,31 @@ The format of the remaining bits is implementation-defined, serving to provide a
 ....
 {reg: [
     {bits:  5, name: 'CNTRID'},
-    {bits:  59, name: 'WARL', type: 1},
+    {bits:  3, name: 'PRIV'},
+    {bits: 56, name: 'WARL', type: 1},
 ], config:{lanes: 1, hspace:1024}}
 ....
+
+[cols="15%,85%",options="header"]
+|===
+| Field | Description
+| CNTRID | The ID of the counter whose overflow caused the sample metadata to be captured.
+  If more than one counter overflows simultaneously, CNTRID holds the ID of the
+  numerically lowest counter.
+| PRIV | The privilege mode and virtualization state at the time `shpmspc` was captured,
+  encoded as follows: 
+
+[cols="15%,85%",options="header"]
+!===
+! Encoding ! Effective Mode
+! 0b000 ! U-mode
+! 0b001 ! HS-mode
+! 0b011 ! M-mode
+! 0b100 ! VU-mode
+! 0b101 ! VS-mode
+! others ! Reserved
+!===
+|===
 
 Access to `shpmsdata` matches that of `shpmspc` above, and `shpmsdata` captures sample metadata for the same cases where `shpmspc` captures a sample PC.
 
