@@ -17,6 +17,24 @@ compliance changes — without losing their specification content.
 > does not, you have not adopted the Antora dual build yet. Work through
 > [`MIGRATION.md`](MIGRATION.md) first, then come back here.
 
+**Want this to happen automatically?** `.github/workflows/template-sync.yml` —
+itself a template-owned file, so it is already in your repository if you are on
+a current template version — runs weekly and opens a PR that copies
+template-owned files for you, using the same rules as section 2.4. You do not
+need to do section 1 by hand first: its first run bootstraps `.template-version`
+against `template/main` on its own (what *Use this template* copied from) and
+opens an initial PR adding it, so a repository created from the template opts in
+with no manual step. It cannot do the manual merge in sections 2.5–2.6 for you;
+it lists which shared files need that attention in the PR description. You still
+need a `GHTOKEN` repository secret for it to push (see the *Repository Setup
+Checklist* in [`README.adoc`](README.adoc)) — without one, workflow-file updates
+are the one thing `GITHUB_TOKEN` cannot push, and the PR step fails. The rest of
+this guide describes what that workflow automates, what it leaves for you to do
+by hand, and how to run the same procedure yourself if you would rather not wait
+for the schedule or want more control over the baseline (section 1.2's
+closest-match search finds a more precise baseline than the bootstrap's
+"assume you're on `main`").
+
 The procedure is in sections 1–3. If you want to know *why* it works this way, or
 which files belong to whom, see the [Reference](#reference) at the end.
 
@@ -215,7 +233,7 @@ history required:
 git checkout $TARGET -- \
   scripts/ tests/ \
   .github/workflows/ .github/dependabot.yml \
-  .pre-commit-config.yaml docker-compose.yml \
+  docker-compose.yml \
   ANTORA.md MIGRATION.md ARC_SUBMISSION.md
 ```
 
@@ -234,6 +252,11 @@ diff before continuing. See [Template-owned](#template-owned) in the Reference
 for what to do about a local edit to a template-owned file.
 
 ### 2.5 Merge the shared files manually
+
+> The Makefile's `REQUIRES` list includes `./scripts/cross-page-xrefs.rb`, which
+> the PDF build needs to resolve links written as `<<chapter.adoc#some-id>>`.
+> Step 2.4 copies `scripts/` wholesale, so the file is already in place when you
+> merge that line.
 
 Shared files carry template structure **and** your customizations on the same
 lines, so you cannot copy them. You have to apply the template's changes to your
@@ -357,6 +380,11 @@ during an upgrade so your build matches what the template tested:
 git checkout $TARGET -- docs-resources
 git submodule update --init --recursive
 ```
+
+Take this step **before** merging `antora-playbook.yml` in 2.5, or at the same
+time. The playbook registers Antora extensions from `docs-resources` (see
+`antora.extensions`), and Antora fails with `Cannot find module` if your
+submodule pointer predates the extension the playbook asks for.
 
 ### 2.8 Record the new baseline
 
@@ -581,6 +609,7 @@ scripts/stamp-antora-version.sh
 scripts/update-spec-state.sh
 scripts/build-pages-site.sh
 scripts/gen-pages-playbook.js
+scripts/cross-page-xrefs.rb
 tests/release-info-test.sh
 .github/workflows/build-pdf.yml
 .github/workflows/version-bot.yml
@@ -588,8 +617,9 @@ tests/release-info-test.sh
 .github/workflows/validate-content-source.yml
 .github/workflows/pre-commit.yml
 .github/workflows/vale-linting.yml
+.github/workflows/template-sync.yml
+.github/workflows/repo-setup.yml
 .github/dependabot.yml
-.pre-commit-config.yaml
 docker-compose.yml
 ANTORA.md
 MIGRATION.md
@@ -597,7 +627,6 @@ ARC_SUBMISSION.md
 UPGRADING.md
 LICENSE
 CODE_OF_CONDUCT.md
-GOVERNANCE.md
 ```
 
 `scripts/build-pages-site.sh` mentions `spec-sample`, but only in comments. It
@@ -605,8 +634,19 @@ reads `version:` from `antora.yml` at runtime, and the component name reaches it
 via `start_page` in `antora-playbook.yml`, so the script itself carries nothing
 per-repository.
 
-`CONTRIBUTING.md` and `GOVERNANCE.md` are template-owned *unless* your task group
-has amended them. If so, treat them as shared files.
+`.pre-commit-config.yaml` is not on this list either, though it was until
+template-sync started overwriting spec repositories that had added their own
+hooks. A spec repository is *expected* to add `repo: local` hooks for its own
+invariants — `riscv-high-assurance-cryptography` gates cross-chapter link syntax
+that way — so the file carries template structure and your hooks on the same
+lines, which is the definition of a shared file (below). Take the template's
+hooks and `rev` bumps; keep your own `repo: local` block.
+
+`CONTRIBUTING.md` and `GOVERNANCE.md` are not on this list. The template's
+`GOVERNANCE.md` is a placeholder that every task group is expected to rewrite, and
+task groups often amend `CONTRIBUTING.md`, so both are shared files (below).
+`template-sync.yml` never overwrites them; it only reports when the template's copy
+changed.
 
 `UPGRADING.md` is listed here, but note that your repository will not have a copy
 until the template ships this guide in a release. Add it to the `git checkout`
@@ -629,6 +669,9 @@ keeping your own values from this table.
 | `.gitignore` | Usually identical; the template adds entries as new generated artifacts appear |
 | `.gitmodules` | Usually identical — check rather than assume |
 | `.vale.ini` | `BasedOnStyles`, `Vocab`, and any rule you have switched off; `StylesPath` and `Packages` are template-owned |
+| `.pre-commit-config.yaml` | Any `repo: local` hook of your own (a link checker, a naming gate); the shared hooks, their order, and their `rev` pins are template-owned |
+| `CONTRIBUTING.md` | Any task-group-specific contribution process; take the template's changes to the shared DCO and workflow text |
+| `GOVERNANCE.md` | The governing group, how to join it, and its mailing list — normally all of it |
 | `src/<your-spec>.adoc` | Your `include::` lines only; see below |
 
 #### The one file that is both
