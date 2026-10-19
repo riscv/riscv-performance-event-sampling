@@ -70,8 +70,8 @@ echo "    component version: ${head_version:-<none>}"
 # freshly seeded repo produces.
 #
 # So untagged builds publish under a short, fixed label. This also stops every
-# dispatch from minting a brand-new /riscv-performance-event-sampling/<sha>/ path that the next
-# publish orphans; /riscv-performance-event-sampling/dev/ stays linkable. The full dev version is
+# dispatch from minting a brand-new /spec-sample/<sha>/ path that the next
+# publish orphans; /spec-sample/dev/ stays linkable. The full dev version is
 # still recorded on the cover page, via the page-revnumber stamped above.
 # ---------------------------------------------------------------------------
 case "$head_version" in
