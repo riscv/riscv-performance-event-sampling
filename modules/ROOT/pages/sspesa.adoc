@@ -79,7 +79,7 @@ The PRIV field records the privilege mode and virtualization state at the time `
   If more than one counter overflows simultaneously, CNTRID holds the ID of the
   numerically lowest counter.
 | PRIV | The privilege mode and virtualization state at the time `shpmspc` was captured,
-  encoded as follows: 
+  encoded as follows:
 
 [cols="15%,85%",options="header"]
 !===
