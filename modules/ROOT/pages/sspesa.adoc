@@ -72,7 +72,7 @@ The PRIV field records the privilege mode and virtualization state at the time `
 ], config:{lanes: 1, hspace:1024}}
 ....
 
-[cols="15%,85%",options="header"]
+[cols="15%,85%a",options="header"]
 |===
 | Field | Description
 | CNTRID | The ID of the counter whose overflow caused the sample metadata to be captured.
